@@ -450,16 +450,13 @@ namespace PayrollServer.Logic
                 EmployeeLookup byNameAndRate =
                     employees.FirstOrDefault(e => !alreadyMatched.Contains(e.EmployeeId)
                                                   && e.NormalizedName == entryNorm
-                                                  && Math.Abs(e.Rate - r) < 0.01m)
-                    ?? employees.FirstOrDefault(e => e.NormalizedName == entryNorm
-                                                     && Math.Abs(e.Rate - r) < 0.01m);
+                                                  && Math.Abs(e.Rate - r) < 0.01m);
                 if (byNameAndRate != null) return byNameAndRate;
             }
 
-            // 3. Точное совпадение по нормализованному ФИО
+            // 3. Точное совпадение по нормализованному ФИО (не перезаписываем уже сопоставленную запись)
             EmployeeLookup byName =
-                employees.FirstOrDefault(e => !alreadyMatched.Contains(e.EmployeeId) && e.NormalizedName == entryNorm)
-                ?? employees.FirstOrDefault(e => e.NormalizedName == entryNorm);
+                employees.FirstOrDefault(e => !alreadyMatched.Contains(e.EmployeeId) && e.NormalizedName == entryNorm);
             if (byName != null) return byName;
 
             // 4. Совпадение по фамилии и инициалам (например, "Харитонюк Е.Н." или родительный падеж из ИП)

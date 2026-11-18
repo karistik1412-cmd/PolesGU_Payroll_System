@@ -242,6 +242,15 @@ namespace PayrollServer.Network
                 response.Data = JsonConvert.SerializeObject(analyticsTable);
                 response.IsSuccess = true;
             }
+            else if (request.Command == "GET_ANALYTICS_FULL")
+            {
+                int month;
+                int year;
+                ParseMonthAndYear(request.Data, out month, out year);
+                AnalyticsData fullAnalytics = _payrollService.GetFullAnalytics(month, year);
+                response.Data = JsonConvert.SerializeObject(fullAnalytics);
+                response.IsSuccess = true;
+            }
             else if (request.Command == "GET_USERS")
             {
                 response.Data = JsonConvert.SerializeObject(_userService.GetUsers());

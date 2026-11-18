@@ -164,6 +164,7 @@
     <Compile Include="Logic\SecurityHelper.cs" />
     <Compile Include="Logic\TimesheetService.cs" />
     <Compile Include="Logic\UserService.cs" />
+    <Compile Include="Models\AnalyticsData.cs" />
     <Compile Include="Models\Employee.cs" />
     <Compile Include="Models\TimesheetEntry.cs" />
     <Compile Include="Models\User.cs" />
