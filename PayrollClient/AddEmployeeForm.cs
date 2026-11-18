@@ -27,7 +27,7 @@ namespace PayrollClient
             LoadDictionaries();
         }
 
-        public AddEmployeeForm(int empId, string fullName, int posId, int deptId)
+        public AddEmployeeForm(int empId, string fullName, int posId, int deptId, decimal? rate = null, string empType = null)
         {
             _editId = empId;
             InitializeForm("Редактирование данных", "Обновить");
@@ -38,11 +38,35 @@ namespace PayrollClient
             if (_allPositions != null)
             {
                 DataRow[] rows = _allPositions.Select($"PositionID = {posId}");
-                if (rows.Length > 0) catId = Convert.ToInt32(rows[0]["Category"]);
+                if (rows.Length > 0 && rows[0]["Category"] != DBNull.Value)
+                    catId = Convert.ToInt32(rows[0]["Category"]);
             }
-            cmbCategory.SelectedIndex = catId - 1;
+            if (catId >= 1 && catId <= cmbCategory.Items.Count)
+                cmbCategory.SelectedIndex = catId - 1;
             if (posId != -1) cmbPositions.SelectedValue = posId;
             if (deptId != -1) cmbDepartments.SelectedValue = deptId;
+
+            if (rate.HasValue)
+            {
+                for (int i = 0; i < cmbRate.Items.Count; i++)
+                {
+                    string itemText = cmbRate.Items[i].ToString().Replace(',', '.');
+                    decimal itemVal;
+                    if (decimal.TryParse(itemText, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out itemVal)
+                        && Math.Abs(itemVal - rate.Value) < 0.01m)
+                    {
+                        cmbRate.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(empType))
+            {
+                int idx = cmbEmployment.Items.IndexOf(empType.Trim());
+                if (idx >= 0) cmbEmployment.SelectedIndex = idx;
+            }
         }
 
         private void InitializeForm(string title, string btnText)

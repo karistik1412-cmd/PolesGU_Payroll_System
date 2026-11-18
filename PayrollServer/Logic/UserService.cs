@@ -12,7 +12,7 @@ namespace PayrollServer.Logic
             using (var conn = DbConnection.GetInstance().GetConnection())
             {
                 conn.Open();
-                string query = @"SELECT u.Login AS [Логин], r.RoleName AS [Роль] 
+                string query = @"SELECT u.UserID, u.Login AS [Логин], r.RoleName AS [Роль] 
                                  FROM Users u JOIN Roles r ON u.RoleID = r.RoleID";
                 SqlDataAdapter adapter = new SqlDataAdapter(query, conn);
                 adapter.Fill(dt);

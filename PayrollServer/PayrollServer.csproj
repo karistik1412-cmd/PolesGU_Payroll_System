@@ -159,10 +159,13 @@
     <Compile Include="Database\DbConnection.cs" />
     <Compile Include="Logic\DashboardService.cs" />
     <Compile Include="Logic\EmployeeService.cs" />
+    <Compile Include="Logic\IPayrollStrategy.cs" />
     <Compile Include="Logic\PayrollService.cs" />
     <Compile Include="Logic\SecurityHelper.cs" />
+    <Compile Include="Logic\TimesheetService.cs" />
     <Compile Include="Logic\UserService.cs" />
     <Compile Include="Models\Employee.cs" />
+    <Compile Include="Models\TimesheetEntry.cs" />
     <Compile Include="Models\User.cs" />
     <Compile Include="Network\NetworkMessage.cs" />
     <Compile Include="Network\TcpServer.cs" />

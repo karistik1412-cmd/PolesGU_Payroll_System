@@ -8,123 +8,192 @@ namespace PayrollServer.Logic
     public class PayrollService
     {
         private const decimal BaseRate = 250.00m;
-        private const int CurrentYear = 2026; // Год пока оставим фиксированным
+        private const int DefaultYear = 2026;
 
-        // ТЕПЕРЬ МЕТОД ПРИНИМАЕТ МЕСЯЦ
-        public DataTable CalculatePayroll(int month)
+        private readonly IPayrollStrategy _hourlyStrategy = new HourlyPayrollStrategy();
+        private readonly IPayrollStrategy _dailyStrategy = new DailyPayrollStrategy();
+
+        // Расчет зарплаты за выбранный месяц и год на основе данных табеля (дни и часы)
+        public DataTable CalculatePayroll(int month, int year = DefaultYear)
         {
             DataTable resultTable = new DataTable();
+            resultTable.Columns.Add("EmployeeID", typeof(int));
+            resultTable.Columns.Add("ФИО", typeof(string));
+            resultTable.Columns.Add("Ставка", typeof(decimal));
+            resultTable.Columns.Add("Дни", typeof(string));
+            resultTable.Columns.Add("Часы", typeof(string));
+            resultTable.Columns.Add("Оклад", typeof(decimal));
+            resultTable.Columns.Add("Надбавка", typeof(decimal));
+            resultTable.Columns.Add("НДФЛ (13%)", typeof(decimal));
+            resultTable.Columns.Add("ФСЗН (1%)", typeof(decimal));
+            resultTable.Columns.Add("Профсоюз (1%)", typeof(decimal));
+            resultTable.Columns.Add("К выплате", typeof(decimal));
+
+            int defaultNormDays = TimesheetService.GetWorkingDaysInMonth(year, month);
 
             using (var conn = DbConnection.GetInstance().GetConnection())
             {
                 conn.Open();
-                // Берем ставку и данные табеля (если табеля нет, считаем, что норма = факт = 21 день)
-                string selectQuery = @"
-                    SELECT e.EmployeeID, e.FullName, p.Coefficient, e.ExperienceYears, e.HireDate, e.Rate, 
-                           ISNULL(t.FactDays, 21) AS FactDays, 
-                           ISNULL(t.NormDays, 21) AS NormDays
-                    FROM Employees e
-                    JOIN Positions p ON e.PositionID = p.PositionID
-                    LEFT JOIN Timesheets t ON e.EmployeeID = t.EmployeeID AND t.Month = @m AND t.Year = @y";
+                bool hasHoursColumns = TimesheetService.EnsureHoursColumns(conn);
+                string daysCol = TimesheetService.DetectDaysColumnName(conn);
 
-                SqlCommand cmd = new SqlCommand(selectQuery, conn);
-                cmd.Parameters.AddWithValue("@m", month);
-                cmd.Parameters.AddWithValue("@y", CurrentYear);
-                SqlDataReader reader = cmd.ExecuteReader();
+                string selectQuery = hasHoursColumns
+                    ? $@"
+                        SELECT e.EmployeeID, e.FullName, p.Coefficient, ISNULL(p.Category, 1) AS Category,
+                               e.ExperienceYears, e.HireDate, e.Rate,
+                               t.TimesheetID, t.[{daysCol}] AS FactDays, t.NormDays,
+                               t.HoursWorked, t.NormHours
+                        FROM Employees e
+                        JOIN Positions p ON e.PositionID = p.PositionID
+                        LEFT JOIN Timesheets t ON e.EmployeeID = t.EmployeeID AND t.[Month] = @m AND t.[Year] = @y
+                        ORDER BY e.FullName, e.Rate DESC"
+                    : $@"
+                        SELECT e.EmployeeID, e.FullName, p.Coefficient, ISNULL(p.Category, 1) AS Category,
+                               e.ExperienceYears, e.HireDate, e.Rate,
+                               t.TimesheetID, t.[{daysCol}] AS FactDays, t.NormDays,
+                               CAST(NULL AS DECIMAL(6, 2)) AS HoursWorked,
+                               CAST(NULL AS DECIMAL(6, 2)) AS NormHours
+                        FROM Employees e
+                        JOIN Positions p ON e.PositionID = p.PositionID
+                        LEFT JOIN Timesheets t ON e.EmployeeID = t.EmployeeID AND t.[Month] = @m AND t.[Year] = @y
+                        ORDER BY e.FullName, e.Rate DESC";
 
-                resultTable.Columns.Add("EmployeeID", typeof(int));
-                resultTable.Columns.Add("ФИО", typeof(string));
-                resultTable.Columns.Add("Оклад", typeof(decimal));
-                resultTable.Columns.Add("Надбавка", typeof(decimal));
-                resultTable.Columns.Add("НДФЛ (13%)", typeof(decimal));
-                resultTable.Columns.Add("ФСЗН (1%)", typeof(decimal));
-                resultTable.Columns.Add("Профсоюз (1%)", typeof(decimal));
-                resultTable.Columns.Add("К выплате", typeof(decimal));
-
-                while (reader.Read())
+                using (var cmd = new SqlCommand(selectQuery, conn))
                 {
-                    int empId = Convert.ToInt32(reader["EmployeeID"]);
-                    string fullName = reader["FullName"].ToString();
-                    decimal coefficient = Convert.ToDecimal(reader["Coefficient"]);
-                    decimal rate = reader["Rate"] != DBNull.Value ? Convert.ToDecimal(reader["Rate"]) : 1.0m;
+                    cmd.Parameters.AddWithValue("@m", month);
+                    cmd.Parameters.AddWithValue("@y", year);
 
-                    int factDays = Convert.ToInt32(reader["FactDays"]);
-                    int normDays = Convert.ToInt32(reader["NormDays"]);
-
-                    int hireYear = Convert.ToDateTime(reader["HireDate"]).Year;
-                    int experience = DateTime.Now.Year - hireYear;
-
-                    // Считаем коэффициент отработки (сколько отработал от нормы)
-                    decimal daysRatio = (decimal)factDays / normDays;
-
-                    // Оклад = БазоваяСтавка * Коэффициент * Ставка * Отработка
-                    decimal baseSalary = BaseRate * coefficient * rate * daysRatio;
-
-                    // Надбавка за стаж (считается от оклада)
-                    decimal bonusPercent = 0.10m;
-                    if (experience >= 5 && experience < 10) bonusPercent = 0.15m;
-                    else if (experience >= 10 && experience < 15) bonusPercent = 0.20m;
-                    else if (experience >= 15) bonusPercent = 0.30m;
-
-                    decimal bonus = baseSalary * bonusPercent;
-                    decimal grossSalary = baseSalary + bonus;
-
-                    decimal taxAmount = grossSalary * 0.13m;
-                    decimal fszenAmount = grossSalary * 0.01m;
-                    decimal unionAmount = grossSalary * 0.01m;
-                    decimal netSalary = grossSalary - taxAmount - fszenAmount - unionAmount;
-
-                    resultTable.Rows.Add(empId, fullName, baseSalary, bonus, taxAmount, fszenAmount, unionAmount, netSalary);
-                }
-                reader.Close();
-            }
-            return resultTable;
-        }
-
-        // МЕТОД СОХРАНЕНИЯ ТОЖЕ ПРИНИМАЕТ МЕСЯЦ
-        public bool SavePayroll(DataTable payrollTable, int month)
-        {
-            using (var conn = DbConnection.GetInstance().GetConnection())
-            {
-                conn.Open();
-
-                string deleteQuery = "DELETE FROM PayrollCalculations WHERE Month = @m AND Year = @y";
-                using (var delCmd = new SqlCommand(deleteQuery, conn))
-                {
-                    delCmd.Parameters.AddWithValue("@m", month);
-                    delCmd.Parameters.AddWithValue("@y", CurrentYear);
-                    delCmd.ExecuteNonQuery();
-                }
-
-                foreach (DataRow row in payrollTable.Rows)
-                {
-                    // БЕРЕМ ID НАПРЯМУЮ ИЗ ТАБЛИЦЫ! Больше никаких поисков по ФИО.
-                    int empId = Convert.ToInt32(row["EmployeeID"]);
-
-                    string insertQuery = @"
-                        INSERT INTO PayrollCalculations 
-                        (EmployeeID, Month, Year, BaseSalary, Bonus, TaxAmount, FszenAmount, UnionAmount, NetSalary) 
-                        VALUES (@id, @m, @y, @base, @bonus, @tax, @fszen, @union, @net)";
-
-                    using (var insCmd = new SqlCommand(insertQuery, conn))
+                    using (var reader = cmd.ExecuteReader())
                     {
-                        insCmd.Parameters.AddWithValue("@id", empId);
-                        insCmd.Parameters.AddWithValue("@m", month);
-                        insCmd.Parameters.AddWithValue("@y", CurrentYear);
-                        insCmd.Parameters.AddWithValue("@base", row["Оклад"]);
-                        insCmd.Parameters.AddWithValue("@bonus", row["Надбавка"]);
-                        insCmd.Parameters.AddWithValue("@tax", row["НДФЛ (13%)"]);
-                        insCmd.Parameters.AddWithValue("@fszen", row["ФСЗН (1%)"]);
-                        insCmd.Parameters.AddWithValue("@union", row["Профсоюз (1%)"]);
-                        insCmd.Parameters.AddWithValue("@net", row["К выплате"]);
-                        insCmd.ExecuteNonQuery();
+                        while (reader.Read())
+                        {
+                            int empId = Convert.ToInt32(reader["EmployeeID"]);
+                            string fullName = reader["FullName"].ToString();
+                            decimal coefficient = Convert.ToDecimal(reader["Coefficient"]);
+                            int category = Convert.ToInt32(reader["Category"]);
+                            decimal rate = reader["Rate"] != DBNull.Value ? Convert.ToDecimal(reader["Rate"]) : 1.0m;
+                            if (rate <= 0m) rate = 1.0m;
+
+                            bool hasTimesheet = reader["TimesheetID"] != DBNull.Value;
+                            int normDays = (hasTimesheet && reader["NormDays"] != DBNull.Value && Convert.ToInt32(reader["NormDays"]) > 0)
+                                ? Convert.ToInt32(reader["NormDays"])
+                                : defaultNormDays;
+
+                            int factDays = (hasTimesheet && reader["FactDays"] != DBNull.Value)
+                                ? Convert.ToInt32(reader["FactDays"])
+                                : normDays;
+
+                            bool hasExplicitHours = hasTimesheet && reader["HoursWorked"] != DBNull.Value;
+                            decimal normHours = (hasTimesheet && reader["NormHours"] != DBNull.Value && Convert.ToDecimal(reader["NormHours"]) > 0m)
+                                ? Convert.ToDecimal(reader["NormHours"])
+                                : TimesheetService.CalculateNormHours(normDays, category, rate);
+
+                            decimal factHours = hasExplicitHours
+                                ? Convert.ToDecimal(reader["HoursWorked"])
+                                : TimesheetService.CalculateNormHours(factDays, category, rate);
+
+                            // Точный расчет полных лет стажа
+                            DateTime hireDate = Convert.ToDateTime(reader["HireDate"]);
+                            int experience = CalculateFullYears(hireDate, DateTime.Today);
+                            if (reader["ExperienceYears"] != DBNull.Value)
+                            {
+                                int dbExp = Convert.ToInt32(reader["ExperienceYears"]);
+                                if (dbExp > experience) experience = dbExp;
+                            }
+
+                            // Выбираем стратегию расчета: по часам (если в табеле есть часы) или по дням
+                            IPayrollStrategy strategy = (hasExplicitHours && normHours > 0m)
+                                ? _hourlyStrategy
+                                : _dailyStrategy;
+
+                            decimal baseSalary = strategy.CalculateBaseSalary(
+                                BaseRate, coefficient, rate, factDays, normDays, factHours, normHours);
+
+                            // Надбавка за стаж работы в бюджетной организации
+                            decimal bonusPercent = 0.10m;
+                            if (experience >= 5 && experience < 10) bonusPercent = 0.15m;
+                            else if (experience >= 10 && experience < 15) bonusPercent = 0.20m;
+                            else if (experience >= 15) bonusPercent = 0.30m;
+
+                            decimal bonus = Math.Round(baseSalary * bonusPercent, 2, MidpointRounding.AwayFromZero);
+                            decimal grossSalary = baseSalary + bonus;
+
+                            decimal taxAmount = Math.Round(grossSalary * 0.13m, 2, MidpointRounding.AwayFromZero);
+                            decimal fszenAmount = Math.Round(grossSalary * 0.01m, 2, MidpointRounding.AwayFromZero);
+                            decimal unionAmount = Math.Round(grossSalary * 0.01m, 2, MidpointRounding.AwayFromZero);
+                            decimal netSalary = Math.Round(grossSalary - taxAmount - fszenAmount - unionAmount, 2, MidpointRounding.AwayFromZero);
+
+                            string daysDisplay = $"{factDays} / {normDays}";
+                            string hoursDisplay = $"{factHours:0.#} / {normHours:0.#}";
+
+                            resultTable.Rows.Add(
+                                empId, fullName, rate, daysDisplay, hoursDisplay,
+                                baseSalary, bonus, taxAmount, fszenAmount, unionAmount, netSalary);
+                        }
                     }
                 }
             }
+
+            return resultTable;
+        }
+
+        // Сохранение расчета зарплаты в БД в рамках транзакции
+        public bool SavePayroll(DataTable payrollTable, int month, int year = DefaultYear)
+        {
+            if (payrollTable == null) return false;
+
+            using (var conn = DbConnection.GetInstance().GetConnection())
+            {
+                conn.Open();
+                using (var tx = conn.BeginTransaction())
+                {
+                    try
+                    {
+                        string deleteQuery = "DELETE FROM PayrollCalculations WHERE [Month] = @m AND [Year] = @y";
+                        using (var delCmd = new SqlCommand(deleteQuery, conn, tx))
+                        {
+                            delCmd.Parameters.AddWithValue("@m", month);
+                            delCmd.Parameters.AddWithValue("@y", year);
+                            delCmd.ExecuteNonQuery();
+                        }
+
+                        string insertQuery = @"
+                            INSERT INTO PayrollCalculations 
+                            (EmployeeID, [Month], [Year], BaseSalary, Bonus, TaxAmount, FszenAmount, UnionAmount, NetSalary) 
+                            VALUES (@id, @m, @y, @base, @bonus, @tax, @fszen, @union, @net)";
+
+                        foreach (DataRow row in payrollTable.Rows)
+                        {
+                            int empId = Convert.ToInt32(row["EmployeeID"]);
+                            using (var insCmd = new SqlCommand(insertQuery, conn, tx))
+                            {
+                                insCmd.Parameters.AddWithValue("@id", empId);
+                                insCmd.Parameters.AddWithValue("@m", month);
+                                insCmd.Parameters.AddWithValue("@y", year);
+                                insCmd.Parameters.AddWithValue("@base", Convert.ToDecimal(row["Оклад"]));
+                                insCmd.Parameters.AddWithValue("@bonus", Convert.ToDecimal(row["Надбавка"]));
+                                insCmd.Parameters.AddWithValue("@tax", Convert.ToDecimal(row["НДФЛ (13%)"]));
+                                insCmd.Parameters.AddWithValue("@fszen", Convert.ToDecimal(row["ФСЗН (1%)"]));
+                                insCmd.Parameters.AddWithValue("@union", Convert.ToDecimal(row["Профсоюз (1%)"]));
+                                insCmd.Parameters.AddWithValue("@net", Convert.ToDecimal(row["К выплате"]));
+                                insCmd.ExecuteNonQuery();
+                            }
+                        }
+
+                        tx.Commit();
+                    }
+                    catch
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
+            }
+
             return true;
         }
 
-        public DataTable GetAnalyticsData(int month)
+        public DataTable GetAnalyticsData(int month, int year = DefaultYear)
         {
             DataTable dt = new DataTable();
             using (var conn = DbConnection.GetInstance().GetConnection())
@@ -135,17 +204,29 @@ namespace PayrollServer.Logic
                     FROM PayrollCalculations pc
                     JOIN Employees e ON pc.EmployeeID = e.EmployeeID
                     JOIN Departments d ON e.DepartmentID = d.DepartmentID
-                    WHERE pc.Month = @m AND pc.Year = @y
+                    WHERE pc.[Month] = @m AND pc.[Year] = @y
                     GROUP BY d.DepartmentName";
 
-                SqlCommand cmd = new SqlCommand(query, conn);
-                cmd.Parameters.AddWithValue("@m", month);
-                cmd.Parameters.AddWithValue("@y", CurrentYear);
+                using (var cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@m", month);
+                    cmd.Parameters.AddWithValue("@y", year);
 
-                SqlDataAdapter adapter = new SqlDataAdapter(cmd);
-                adapter.Fill(dt);
+                    using (var adapter = new SqlDataAdapter(cmd))
+                    {
+                        adapter.Fill(dt);
+                    }
+                }
             }
             return dt;
+        }
+
+        private static int CalculateFullYears(DateTime startDate, DateTime endDate)
+        {
+            if (endDate <= startDate) return 0;
+            int years = endDate.Year - startDate.Year;
+            if (endDate < startDate.AddYears(years)) years--;
+            return years < 0 ? 0 : years;
         }
     }
 }
