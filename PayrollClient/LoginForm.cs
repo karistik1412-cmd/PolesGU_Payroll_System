@@ -2,106 +2,151 @@
 using System.Drawing;
 using System.Windows.Forms;
 using PayrollClient.Network;
+using PayrollClient.Services;
 
 namespace PayrollClient
 {
     public partial class LoginForm : Form
     {
-        // Объявляем элементы управления на уровне класса, чтобы они были доступны в методе клика
-        private TextBox txtLogin;
-        private TextBox txtPassword;
-        private Button btnLogin;
+        private readonly TextBox txtLogin;
+        private readonly TextBox txtPassword;
+        private readonly Button btnLogin;
 
         public LoginForm()
         {
-            // Настраиваем само окно (убираем стандартные рамки для красоты)
-            this.Text = "Авторизация - ПолесГУ";
-            this.Size = new Size(400, 500);
+            this.Text = "ПолесГУ — Вход в систему";
+            this.ClientSize = new Size(430, 495);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Color.FromArgb(240, 244, 248); // Светло-серый фон
-            this.FormBorderStyle = FormBorderStyle.FixedSingle; // Фиксированный размер
+            this.BackColor = UiTheme.CardBg;
+            this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.Font = new Font("Segoe UI", 10f);
 
-            // Создаем контейнер для центрирования элементов
-            Panel centerPanel = new Panel();
-            centerPanel.Dock = DockStyle.Fill;
-            this.Controls.Add(centerPanel);
+            // --- ВЕРХНЯЯ ФИРМЕННАЯ ШАПКА ПОЛЕСГУ ---
+            Panel headerBanner = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 135,
+                BackColor = UiTheme.SidebarBg
+            };
+            headerBanner.Paint += (s, e) =>
+            {
+                using (SolidBrush accent = new SolidBrush(UiTheme.AccentGreen))
+                {
+                    e.Graphics.FillRectangle(accent, 0, headerBanner.Height - 4, headerBanner.Width, 4);
+                }
+            };
+            this.Controls.Add(headerBanner);
 
-            // --- ЗАГОЛОВОК ---
-            Label lblTitle = new Label();
-            lblTitle.Text = "Вход в систему";
-            lblTitle.Font = new Font("Segoe UI", 18f, FontStyle.Bold);
-            lblTitle.ForeColor = Color.FromArgb(45, 52, 54);
-            lblTitle.TextAlign = ContentAlignment.MiddleCenter;
-            lblTitle.Location = new Point(0, 50);
-            lblTitle.Size = new Size(400, 50);
-            centerPanel.Controls.Add(lblTitle);
+            Label lblBrand = new Label
+            {
+                Text = "ПОЛЕСГУ",
+                Font = new Font("Segoe UI", 22f, FontStyle.Bold),
+                ForeColor = Color.White,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(0, 30),
+                Size = new Size(430, 44)
+            };
+            headerBanner.Controls.Add(lblBrand);
+
+            Label lblSubtitle = new Label
+            {
+                Text = "Система начисления заработной платы",
+                Font = new Font("Segoe UI", 9.75f, FontStyle.Regular),
+                ForeColor = UiTheme.SidebarTextMuted,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(0, 78),
+                Size = new Size(430, 26)
+            };
+            headerBanner.Controls.Add(lblSubtitle);
+
+            // --- ЗАГОЛОВОК ФОРМЫ ---
+            Label lblTitle = new Label
+            {
+                Text = "Вход в учётную запись",
+                Font = new Font("Segoe UI", 13.5f, FontStyle.Bold),
+                ForeColor = UiTheme.TextPrimary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(0, 158),
+                Size = new Size(430, 32)
+            };
+            this.Controls.Add(lblTitle);
+
+            int fieldX = 60;
+            int fieldWidth = 310;
 
             // --- ПОЛЕ ЛОГИНА ---
-            Label lblLogin = new Label();
-            lblLogin.Text = "Логин";
-            lblLogin.ForeColor = Color.Gray;
-            lblLogin.Location = new Point(100, 140);
-            centerPanel.Controls.Add(lblLogin);
+            Label lblLogin = new Label
+            {
+                Text = "Логин",
+                Font = new Font("Segoe UI", 9.25f, FontStyle.Bold),
+                ForeColor = UiTheme.TextSecondary,
+                Location = new Point(fieldX, 206),
+                AutoSize = true
+            };
+            this.Controls.Add(lblLogin);
 
-            txtLogin = new TextBox();
-            txtLogin.Location = new Point(100, 165);
-            txtLogin.Size = new Size(200, 30);
-            txtLogin.Font = new Font("Segoe UI", 12f);
-            centerPanel.Controls.Add(txtLogin);
+            txtLogin = new TextBox
+            {
+                Font = new Font("Segoe UI", 11f)
+            };
+            Panel loginBox = UiTheme.WrapTextBox(txtLogin, fieldX, 229, fieldWidth, 36);
+            this.Controls.Add(loginBox);
 
             // --- ПОЛЕ ПАРОЛЯ ---
-            Label lblPassword = new Label();
-            lblPassword.Text = "Пароль";
-            lblPassword.ForeColor = Color.Gray;
-            lblPassword.Location = new Point(100, 210);
-            centerPanel.Controls.Add(lblPassword);
+            Label lblPassword = new Label
+            {
+                Text = "Пароль",
+                Font = new Font("Segoe UI", 9.25f, FontStyle.Bold),
+                ForeColor = UiTheme.TextSecondary,
+                Location = new Point(fieldX, 282),
+                AutoSize = true
+            };
+            this.Controls.Add(lblPassword);
 
-            txtPassword = new TextBox();
-            txtPassword.Location = new Point(100, 235);
-            txtPassword.Size = new Size(200, 30);
-            txtPassword.Font = new Font("Segoe UI", 12f);
-            txtPassword.PasswordChar = '*'; // Скрываем символы
-            centerPanel.Controls.Add(txtPassword);
+            txtPassword = new TextBox
+            {
+                Font = new Font("Segoe UI", 11f),
+                UseSystemPasswordChar = true
+            };
+            Panel passBox = UiTheme.WrapTextBox(txtPassword, fieldX, 305, fieldWidth, 36);
+            this.Controls.Add(passBox);
 
             // --- КНОПКА ВОЙТИ ---
-            btnLogin = new Button();
-            btnLogin.Text = "Войти";
-            btnLogin.Location = new Point(100, 300);
-            btnLogin.Size = new Size(200, 45);
-            btnLogin.FlatStyle = FlatStyle.Flat;
-            btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.BackColor = Color.FromArgb(46, 139, 87); // Зеленый
-            btnLogin.ForeColor = Color.White;
-            btnLogin.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
-            btnLogin.Cursor = Cursors.Hand;
-
-            // Эффект при наведении
-            btnLogin.MouseEnter += (s, e) => btnLogin.BackColor = Color.FromArgb(36, 119, 67);
-            btnLogin.MouseLeave += (s, e) => btnLogin.BackColor = Color.FromArgb(46, 139, 87);
-
-            // Привязываем наш старый метод клика
+            btnLogin = UiTheme.CreatePrimaryButton("Войти в систему", fieldX, 368, fieldWidth, 44);
+            btnLogin.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
             btnLogin.Click += btnLogin_Click;
+            this.Controls.Add(btnLogin);
 
-            centerPanel.Controls.Add(btnLogin);
+            // --- НИЖНЯЯ ПОДПИСЬ ---
+            Label lblFooter = new Label
+            {
+                Text = "УО «Полесский государственный университет»",
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+                ForeColor = UiTheme.TextSecondary,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Location = new Point(0, 452),
+                Size = new Size(430, 22)
+            };
+            this.Controls.Add(lblFooter);
+
             this.AcceptButton = btnLogin;
         }
 
-        // --- ВАШ СТАРЫЙ КОД ОБРАБОТКИ КНОПКИ ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ ---
         private void btnLogin_Click(object sender, EventArgs e)
         {
-            string login = txtLogin.Text;
+            string login = txtLogin.Text.Trim();
             string password = txtPassword.Text;
 
             if (string.IsNullOrEmpty(login) || string.IsNullOrEmpty(password))
             {
-                MessageBox.Show("Заполните все поля!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Заполните логин и пароль!", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
             try
             {
+                btnLogin.Enabled = false;
                 var connection = new ServerConnection();
                 var request = new NetworkMessage
                 {
@@ -125,7 +170,12 @@ namespace PayrollClient
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Не удалось связаться с сервером. Убедитесь, что он запущен.\n" + ex.Message, "Сетевая ошибка");
+                MessageBox.Show("Не удалось связаться с сервером. Убедитесь, что он запущен.\n" + ex.Message,
+                    "Сетевая ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                btnLogin.Enabled = true;
             }
         }
     }

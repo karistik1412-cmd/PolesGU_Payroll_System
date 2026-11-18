@@ -45,7 +45,22 @@ namespace PayrollClient.Services
         public string InfoMessage { get; set; }
     }
 
-    // Сервис импорта табеля из Excel и генерации «табеля-болванки»
+    // Модель расширенной аналитики для вкладки «Графики»
+    public class AnalyticsDataDto
+    {
+        public DataTable DepartmentPayroll { get; set; }
+        public int PaidEmployeesCount { get; set; }
+        public decimal TotalBaseSalary { get; set; }
+        public decimal TotalBonus { get; set; }
+        public decimal TotalTax { get; set; }
+        public decimal TotalFszen { get; set; }
+        public decimal TotalUnion { get; set; }
+        public decimal TotalNetSalary { get; set; }
+        public DataTable MonthlyTrend { get; set; }
+        public DataTable EmployeeHours { get; set; }
+    }
+
+    // Сервис импорта табеля учета рабочего времени из внешнего Excel-файла
     public static class ExcelTimesheetService
     {
         public static readonly string[] MonthNames =
@@ -96,256 +111,6 @@ namespace PayrollClient.Services
                 throw new InvalidOperationException(
                     "Не удалось распознать структуру табеля в выбранном Excel-файле.\n" +
                     "Убедитесь, что в таблице есть столбец «ФИО» и столбцы дней (1..31) либо «Отработано дней» / «Отработано часов».");
-            }
-        }
-
-        // Генерация готового Excel «табеля-болванки» со случайными отработанными днями и часами
-        public static void GenerateDummyTimesheet(string filePath, DataTable employees, int month, int year)
-        {
-            if (month < 1 || month > 12) month = DateTime.Now.Month;
-            if (year < 2000 || year > 2100) year = 2026;
-
-            int daysInMonth = DateTime.DaysInMonth(year, month);
-            int normDays = CountWorkingDays(year, month);
-            string monthName = MonthNames[month - 1];
-            var rng = new Random();
-
-            using (var workbook = new XLWorkbook())
-            {
-                IXLWorksheet ws = workbook.Worksheets.Add(monthName);
-                ws.Style.Font.FontName = "Segoe UI";
-                ws.Style.Font.FontSize = 9;
-
-                int firstDayCol = 5; // E
-                int lastDayCol = firstDayCol + daysInMonth - 1;
-                int factDaysCol = lastDayCol + 1;
-                int normDaysCol = lastDayCol + 2;
-                int factHoursCol = lastDayCol + 3;
-                int normHoursCol = lastDayCol + 4;
-
-                // Шапка документа
-                ws.Cell(1, 1).Value = "Учреждение образования «Полесский государственный университет»";
-                ws.Range(1, 1, 1, normHoursCol).Merge();
-                ws.Cell(1, 1).Style.Font.Bold = true;
-                ws.Cell(1, 1).Style.Font.FontSize = 11;
-                ws.Cell(1, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                ws.Cell(2, 1).Value = "ТАБЕЛЬ УЧЕТА РАБОЧЕГО ВРЕМЕНИ (БОЛВАНКА)";
-                ws.Range(2, 1, 2, normHoursCol).Merge();
-                ws.Cell(2, 1).Style.Font.Bold = true;
-                ws.Cell(2, 1).Style.Font.FontSize = 13;
-                ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromArgb(46, 139, 87);
-                ws.Cell(2, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                ws.Cell(4, 1).Value = "Месяц:";
-                ws.Cell(4, 1).Style.Font.Bold = true;
-                ws.Cell(4, 2).Value = monthName;
-                ws.Cell(4, 2).Style.Font.Bold = true;
-
-                ws.Cell(4, 3).Value = "Год:";
-                ws.Cell(4, 3).Style.Font.Bold = true;
-                ws.Cell(4, 4).Value = year;
-                ws.Cell(4, 4).Style.Font.Bold = true;
-
-                // Заголовки таблицы (строки 6-7)
-                int headerTop = 6;
-                int headerSub = 7;
-
-                ws.Cell(headerTop, 1).Value = "Таб. №";
-                ws.Range(headerTop, 1, headerSub, 1).Merge();
-
-                ws.Cell(headerTop, 2).Value = "ФИО";
-                ws.Range(headerTop, 2, headerSub, 2).Merge();
-
-                ws.Cell(headerTop, 3).Value = "Должность";
-                ws.Range(headerTop, 3, headerSub, 3).Merge();
-
-                ws.Cell(headerTop, 4).Value = "Ставка";
-                ws.Range(headerTop, 4, headerSub, 4).Merge();
-
-                ws.Cell(headerTop, firstDayCol).Value = "Отметки о явках и неявках по числам месяца (часы)";
-                ws.Range(headerTop, firstDayCol, headerTop, lastDayCol).Merge();
-
-                for (int d = 1; d <= daysInMonth; d++)
-                {
-                    ws.Cell(headerSub, firstDayCol + d - 1).Value = d;
-                }
-
-                ws.Cell(headerTop, factDaysCol).Value = "Отработано дней";
-                ws.Range(headerTop, factDaysCol, headerSub, factDaysCol).Merge();
-
-                ws.Cell(headerTop, normDaysCol).Value = "Норма дней";
-                ws.Range(headerTop, normDaysCol, headerSub, normDaysCol).Merge();
-
-                ws.Cell(headerTop, factHoursCol).Value = "Отработано часов";
-                ws.Range(headerTop, factHoursCol, headerSub, factHoursCol).Merge();
-
-                ws.Cell(headerTop, normHoursCol).Value = "Норма часов";
-                ws.Range(headerTop, normHoursCol, headerSub, normHoursCol).Merge();
-
-                IXLRange headerRange = ws.Range(headerTop, 1, headerSub, normHoursCol);
-                headerRange.Style.Font.Bold = true;
-                headerRange.Style.Font.FontColor = XLColor.White;
-                headerRange.Style.Fill.BackgroundColor = XLColor.FromArgb(46, 139, 87);
-                headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                headerRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                headerRange.Style.Alignment.WrapText = true;
-                ws.Row(headerTop).Height = 22;
-                ws.Row(headerSub).Height = 20;
-
-                // Подготавливаем список сотрудников (из БД или демонстрационный набор)
-                List<DummyEmployeeRow> rows = BuildEmployeeRows(employees);
-
-                int startDataRow = 8;
-                int currentRow = startDataRow;
-                string firstDayLetter = GetColumnLetter(firstDayCol);
-                string lastDayLetter = GetColumnLetter(lastDayCol);
-
-                double[] teacherDailyOptions = { 4.0, 6.0, 6.0, 7.0, 7.2, 8.0, 8.0, 8.0 };
-                double[] staffDailyOptions = { 7.0, 8.0, 8.0, 8.0, 8.0, 8.0 };
-
-                foreach (DummyEmployeeRow emp in rows)
-                {
-                    if (emp.EmployeeId > 0)
-                        ws.Cell(currentRow, 1).Value = emp.EmployeeId;
-                    else
-                        ws.Cell(currentRow, 1).Value = currentRow - startDataRow + 1;
-
-                    ws.Cell(currentRow, 2).Value = emp.FullName;
-                    ws.Cell(currentRow, 3).Value = emp.Position;
-                    ws.Cell(currentRow, 4).Value = emp.Rate;
-                    ws.Cell(currentRow, 4).Style.NumberFormat.Format = "0.##";
-
-                    // Выбираем случайный сценарий посещаемости для сотрудника
-                    int scenario = rng.Next(100);
-                    int sickStart = -1;
-                    int sickLen = 0;
-                    if (scenario >= 75) // ~25% — больничный на 3-5 дней
-                    {
-                        sickStart = rng.Next(3, Math.Max(4, daysInMonth - 6));
-                        sickLen = rng.Next(3, 6);
-                    }
-
-                    for (int d = 1; d <= daysInMonth; d++)
-                    {
-                        int col = firstDayCol + d - 1;
-                        IXLCell dayCell = ws.Cell(currentRow, col);
-                        dayCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                        DayOfWeek dow = new DateTime(year, month, d).DayOfWeek;
-                        if (dow == DayOfWeek.Saturday || dow == DayOfWeek.Sunday)
-                        {
-                            dayCell.Value = "В";
-                            dayCell.Style.Fill.BackgroundColor = XLColor.FromArgb(236, 240, 241);
-                            dayCell.Style.Font.FontColor = XLColor.FromArgb(127, 140, 141);
-                            continue;
-                        }
-
-                        if (sickStart > 0 && d >= sickStart && d < sickStart + sickLen)
-                        {
-                            dayCell.Value = "Б";
-                            dayCell.Style.Fill.BackgroundColor = XLColor.FromArgb(253, 237, 236);
-                            dayCell.Style.Font.FontColor = XLColor.FromArgb(192, 57, 43);
-                            continue;
-                        }
-
-                        if (scenario >= 35 && scenario < 75 && rng.Next(100) < 12)
-                        {
-                            string code = rng.Next(2) == 0 ? "К" : "О";
-                            dayCell.Value = code;
-                            dayCell.Style.Fill.BackgroundColor = XLColor.FromArgb(254, 249, 231);
-                            dayCell.Style.Font.FontColor = XLColor.FromArgb(183, 149, 11);
-                            continue;
-                        }
-
-                        // Случайное реалистичное количество отработанных часов в рабочий день
-                        double baseHours = emp.Category == 1
-                            ? teacherDailyOptions[rng.Next(teacherDailyOptions.Length)]
-                            : staffDailyOptions[rng.Next(staffDailyOptions.Length)];
-
-                        double scaled = baseHours * (double)emp.Rate;
-                        double dayHours = Math.Max(1.0, Math.Round(scaled * 2.0, MidpointRounding.AwayFromZero) / 2.0);
-                        dayCell.Value = dayHours;
-                    }
-
-                    double dailyNorm = emp.Category == 1 ? 7.2 : 8.0;
-                    double empNormHours = Math.Round(normDays * dailyNorm * (double)emp.Rate, 1);
-
-                    ws.Cell(currentRow, factDaysCol).FormulaA1 = $"COUNTIF({firstDayLetter}{currentRow}:{lastDayLetter}{currentRow},\">0\")";
-                    ws.Cell(currentRow, factDaysCol).Style.Font.Bold = true;
-                    ws.Cell(currentRow, factDaysCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                    ws.Cell(currentRow, normDaysCol).Value = normDays;
-                    ws.Cell(currentRow, normDaysCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                    ws.Cell(currentRow, factHoursCol).FormulaA1 = $"SUM({firstDayLetter}{currentRow}:{lastDayLetter}{currentRow})";
-                    ws.Cell(currentRow, factHoursCol).Style.Font.Bold = true;
-                    ws.Cell(currentRow, factHoursCol).Style.NumberFormat.Format = "0.#";
-                    ws.Cell(currentRow, factHoursCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                    ws.Cell(currentRow, normHoursCol).Value = empNormHours;
-                    ws.Cell(currentRow, normHoursCol).Style.NumberFormat.Format = "0.#";
-                    ws.Cell(currentRow, normHoursCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                    ws.Cell(currentRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                    ws.Cell(currentRow, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                    ws.Row(currentRow).Height = 20;
-
-                    currentRow++;
-                }
-
-                // Итоговая строка
-                int lastDataRow = currentRow - 1;
-                if (lastDataRow >= startDataRow)
-                {
-                    ws.Cell(currentRow, 2).Value = "ИТОГО:";
-                    ws.Cell(currentRow, 2).Style.Font.Bold = true;
-                    ws.Cell(currentRow, factDaysCol).FormulaA1 =
-                        $"SUM({GetColumnLetter(factDaysCol)}{startDataRow}:{GetColumnLetter(factDaysCol)}{lastDataRow})";
-                    ws.Cell(currentRow, factHoursCol).FormulaA1 =
-                        $"SUM({GetColumnLetter(factHoursCol)}{startDataRow}:{GetColumnLetter(factHoursCol)}{lastDataRow})";
-                    ws.Cell(currentRow, normHoursCol).FormulaA1 =
-                        $"SUM({GetColumnLetter(normHoursCol)}{startDataRow}:{GetColumnLetter(normHoursCol)}{lastDataRow})";
-
-                    IXLRange totalRange = ws.Range(currentRow, 1, currentRow, normHoursCol);
-                    totalRange.Style.Font.Bold = true;
-                    totalRange.Style.Fill.BackgroundColor = XLColor.FromArgb(232, 245, 233);
-                    ws.Cell(currentRow, factDaysCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                    ws.Cell(currentRow, factHoursCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                    ws.Cell(currentRow, normHoursCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                    currentRow++;
-                }
-
-                // Границы таблицы
-                IXLRange tableRange = ws.Range(headerTop, 1, currentRow - 1, normHoursCol);
-                tableRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-                tableRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-
-                // Легенда и подписи
-                int legendRow = currentRow + 1;
-                ws.Cell(legendRow, 1).Value =
-                    "Условные обозначения: число — отработанные часы за день; В — выходной; Б — больничный; О — отпуск; К — командировка.";
-                ws.Cell(legendRow, 1).Style.Font.Italic = true;
-                ws.Cell(legendRow, 1).Style.Font.FontColor = XLColor.FromArgb(100, 100, 100);
-
-                ws.Cell(legendRow + 2, 2).Value = "Заведующий кафедрой _____________________";
-                ws.Cell(legendRow + 2, 12).Value = "Ответственный за табель _____________________";
-
-                // Настройка ширины столбцов
-                ws.Column(1).Width = 7;
-                ws.Column(2).Width = 30;
-                ws.Column(3).Width = 22;
-                ws.Column(4).Width = 8;
-                for (int d = 1; d <= daysInMonth; d++)
-                {
-                    ws.Column(firstDayCol + d - 1).Width = 4.2;
-                }
-                ws.Column(factDaysCol).Width = 13;
-                ws.Column(normDaysCol).Width = 11;
-                ws.Column(factHoursCol).Width = 14;
-                ws.Column(normHoursCol).Width = 12;
-
-                workbook.SaveAs(filePath);
             }
         }
 
@@ -1010,77 +775,6 @@ namespace PayrollClient.Services
                 if (dow != DayOfWeek.Saturday && dow != DayOfWeek.Sunday) count++;
             }
             return count;
-        }
-
-        private static string GetColumnLetter(int columnNumber)
-        {
-            string result = string.Empty;
-            while (columnNumber > 0)
-            {
-                int modulo = (columnNumber - 1) % 26;
-                result = Convert.ToChar('A' + modulo) + result;
-                columnNumber = (columnNumber - modulo) / 26;
-            }
-            return result;
-        }
-
-        private class DummyEmployeeRow
-        {
-            public int EmployeeId { get; set; }
-            public string FullName { get; set; }
-            public string Position { get; set; }
-            public decimal Rate { get; set; }
-            public int Category { get; set; }
-        }
-
-        private static List<DummyEmployeeRow> BuildEmployeeRows(DataTable employees)
-        {
-            var list = new List<DummyEmployeeRow>();
-
-            if (employees != null && employees.Rows.Count > 0)
-            {
-                foreach (DataRow row in employees.Rows)
-                {
-                    int empId = employees.Columns.Contains("EmployeeID") && row["EmployeeID"] != DBNull.Value
-                        ? Convert.ToInt32(row["EmployeeID"])
-                        : 0;
-                    string name = employees.Columns.Contains("ФИО") && row["ФИО"] != DBNull.Value
-                        ? row["ФИО"].ToString()
-                        : string.Empty;
-                    string pos = employees.Columns.Contains("Должность") && row["Должность"] != DBNull.Value
-                        ? row["Должность"].ToString()
-                        : "Преподаватель";
-                    decimal rate = employees.Columns.Contains("Ставка") && row["Ставка"] != DBNull.Value
-                        ? Convert.ToDecimal(row["Ставка"])
-                        : 1.0m;
-                    int category = employees.Columns.Contains("Category") && row["Category"] != DBNull.Value
-                        ? Convert.ToInt32(row["Category"])
-                        : 1;
-
-                    if (!string.IsNullOrWhiteSpace(name))
-                    {
-                        list.Add(new DummyEmployeeRow
-                        {
-                            EmployeeId = empId,
-                            FullName = name,
-                            Position = pos,
-                            Rate = rate > 0m ? rate : 1.0m,
-                            Category = category
-                        });
-                    }
-                }
-            }
-
-            if (list.Count == 0)
-            {
-                list.Add(new DummyEmployeeRow { FullName = "Харитонюк Евгения Николаевна", Position = "Преподаватель", Rate = 1.0m, Category = 1 });
-                list.Add(new DummyEmployeeRow { FullName = "Харитонюк Евгения Николаевна", Position = "Преподаватель (совм.)", Rate = 0.5m, Category = 1 });
-                list.Add(new DummyEmployeeRow { FullName = "Володько Людмила Павловна", Position = "Заведующий кафедрой", Rate = 1.0m, Category = 1 });
-                list.Add(new DummyEmployeeRow { FullName = "Ковальчук Андрей Сергеевич", Position = "Доцент", Rate = 1.0m, Category = 1 });
-                list.Add(new DummyEmployeeRow { FullName = "Савчук Ольга Викторовна", Position = "Старший преподаватель", Rate = 0.75m, Category = 1 });
-            }
-
-            return list;
         }
     }
 }

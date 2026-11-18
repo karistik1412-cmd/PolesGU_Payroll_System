@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Data;
 using System.Drawing;
+using System.Globalization;
 using System.Windows.Forms;
 using Newtonsoft.Json;
 using PayrollClient.Network;
+using PayrollClient.Services;
 
 namespace PayrollClient
 {
@@ -13,24 +15,25 @@ namespace PayrollClient
         private ComboBox cmbCategory;
         private ComboBox cmbPositions;
         private ComboBox cmbDepartments;
-        private ComboBox cmbRate; // НОВЫЙ СПИСОК
-        private ComboBox cmbEmployment; // НОВЫЙ СПИСОК
+        private ComboBox cmbRate;
+        private ComboBox cmbEmployment;
         private Button btnSave;
+        private Button btnCancel;
 
         private DataTable _allPositions;
         private DataTable _allDepartments;
-        private int? _editId = null;
+        private readonly int? _editId = null;
 
         public AddEmployeeForm()
         {
-            InitializeForm("Прием на работу", "Сохранить");
+            InitializeForm("Приём сотрудника на работу", "Сохранить");
             LoadDictionaries();
         }
 
         public AddEmployeeForm(int empId, string fullName, int posId, int deptId, decimal? rate = null, string empType = null)
         {
             _editId = empId;
-            InitializeForm("Редактирование данных", "Обновить");
+            InitializeForm("Редактирование сотрудника", "Обновить");
             txtFullName.Text = fullName;
             LoadDictionaries();
 
@@ -52,8 +55,7 @@ namespace PayrollClient
                 {
                     string itemText = cmbRate.Items[i].ToString().Replace(',', '.');
                     decimal itemVal;
-                    if (decimal.TryParse(itemText, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out itemVal)
+                    if (decimal.TryParse(itemText, NumberStyles.Float, CultureInfo.InvariantCulture, out itemVal)
                         && Math.Abs(itemVal - rate.Value) < 0.01m)
                     {
                         cmbRate.SelectedIndex = i;
@@ -72,47 +74,118 @@ namespace PayrollClient
         private void InitializeForm(string title, string btnText)
         {
             this.Text = title;
-            this.Size = new Size(420, 480); // Увеличили высоту
+            this.ClientSize = new Size(440, 445);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
-            this.BackColor = Color.FromArgb(240, 244, 248);
-            this.Font = new Font("Segoe UI", 10f);
+            this.BackColor = UiTheme.CardBg;
+            this.Font = new Font("Segoe UI", 9.75f);
 
-            Label lblName = new Label() { Text = "ФИО сотрудника:", Location = new Point(20, 20), AutoSize = true };
-            txtFullName = new TextBox() { Location = new Point(20, 45), Width = 360 };
+            // Фирменная зелёная шапка ПолесГУ
+            Panel header = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 54,
+                BackColor = UiTheme.SidebarBg
+            };
+            Label lblHeader = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 12.5f, FontStyle.Bold),
+                ForeColor = Color.White,
+                Location = new Point(22, 14),
+                AutoSize = true
+            };
+            header.Controls.Add(lblHeader);
+            this.Controls.Add(header);
 
-            Label lblCategory = new Label() { Text = "Категория персонала:", Location = new Point(20, 80), AutoSize = true };
-            cmbCategory = new ComboBox() { Location = new Point(20, 105), Width = 360, DropDownStyle = ComboBoxStyle.DropDownList };
+            Font labelFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+            int x = 24;
+            int w = 392;
+
+            Label lblName = new Label { Text = "ФИО сотрудника", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 70), AutoSize = true };
+            txtFullName = new TextBox { Font = new Font("Segoe UI", 10f) };
+            Panel nameBox = UiTheme.WrapTextBox(txtFullName, x, 92, w, 34);
+
+            Label lblCategory = new Label { Text = "Категория персонала", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 136), AutoSize = true };
+            cmbCategory = new ComboBox
+            {
+                Location = new Point(x, 158),
+                Width = w,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = UiTheme.TextPrimary
+            };
             cmbCategory.Items.Add("Преподавательский состав");
             cmbCategory.Items.Add("Прочий персонал (служащие)");
             cmbCategory.SelectedIndex = 0;
             cmbCategory.SelectedIndexChanged += CategoryChanged;
 
-            Label lblPos = new Label() { Text = "Должность:", Location = new Point(20, 140), AutoSize = true };
-            cmbPositions = new ComboBox() { Location = new Point(20, 165), Width = 360, DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblPos = new Label { Text = "Должность", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 198), AutoSize = true };
+            cmbPositions = new ComboBox
+            {
+                Location = new Point(x, 220),
+                Width = w,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = UiTheme.TextPrimary
+            };
 
-            Label lblDept = new Label() { Text = "Подразделение:", Location = new Point(20, 200), AutoSize = true };
-            cmbDepartments = new ComboBox() { Location = new Point(20, 225), Width = 360, DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblDept = new Label { Text = "Подразделение / кафедра", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 260), AutoSize = true };
+            cmbDepartments = new ComboBox
+            {
+                Location = new Point(x, 282),
+                Width = w,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = UiTheme.TextPrimary
+            };
 
-            // ВЫБОР СТАВКИ
-            Label lblRate = new Label() { Text = "Ставка:", Location = new Point(20, 260), AutoSize = true };
-            cmbRate = new ComboBox() { Location = new Point(20, 285), Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblRate = new Label { Text = "Ставка", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 322), AutoSize = true };
+            cmbRate = new ComboBox
+            {
+                Location = new Point(x, 344),
+                Width = 115,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = UiTheme.TextPrimary
+            };
             cmbRate.Items.AddRange(new object[] { "0,25", "0,5", "0,75", "1,0", "1,5" });
-            cmbRate.SelectedIndex = 3; // По умолчанию 1.0
+            cmbRate.SelectedIndex = 3;
 
-            // ВЫБОР ТИПА ЗАНЯТОСТИ
-            Label lblEmp = new Label() { Text = "Тип занятости:", Location = new Point(140, 260), AutoSize = true };
-            cmbEmployment = new ComboBox() { Location = new Point(140, 285), Width = 240, DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblEmp = new Label { Text = "Тип занятости", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x + 132, 322), AutoSize = true };
+            cmbEmployment = new ComboBox
+            {
+                Location = new Point(x + 132, 344),
+                Width = w - 132,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = UiTheme.TextPrimary
+            };
             cmbEmployment.Items.AddRange(new object[] { "Основное", "Внутреннее совместительство" });
             cmbEmployment.SelectedIndex = 0;
 
-            btnSave = new Button() { Text = btnText, Location = new Point(280, 340), Size = new Size(100, 35), BackColor = Color.FromArgb(46, 139, 87), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnSave.FlatAppearance.BorderSize = 0;
+            btnCancel = UiTheme.CreateOutlineButton("Отмена", x + w - 232, 392, 108, 36);
+            btnCancel.DialogResult = DialogResult.Cancel;
+
+            btnSave = UiTheme.CreatePrimaryButton(btnText, x + w - 116, 392, 116, 36);
             btnSave.Click += BtnSave_Click;
 
-            this.Controls.AddRange(new Control[] { lblName, txtFullName, lblCategory, cmbCategory, lblPos, cmbPositions, lblDept, cmbDepartments, lblRate, cmbRate, lblEmp, cmbEmployment, btnSave });
+            this.Controls.AddRange(new Control[]
+            {
+                lblName, nameBox, lblCategory, cmbCategory, lblPos, cmbPositions,
+                lblDept, cmbDepartments, lblRate, cmbRate, lblEmp, cmbEmployment,
+                btnCancel, btnSave
+            });
+
+            this.AcceptButton = btnSave;
+            this.CancelButton = btnCancel;
         }
 
         private void LoadDictionaries()
@@ -162,27 +235,16 @@ namespace PayrollClient
             {
                 int posId = Convert.ToInt32(cmbPositions.SelectedValue);
                 int deptId = Convert.ToInt32(cmbDepartments.SelectedValue);
-                string name = txtFullName.Text;
-
+                string name = txtFullName.Text.Trim();
 
                 string rateStr = cmbRate.Text.Replace(',', '.');
-                decimal rate = Convert.ToDecimal(rateStr, System.Globalization.CultureInfo.InvariantCulture);
+                decimal rate = Convert.ToDecimal(rateStr, CultureInfo.InvariantCulture);
+                string rateForServer = rate.ToString(CultureInfo.InvariantCulture);
                 string empType = cmbEmployment.Text;
 
-                NetworkMessage request;
-
-                if (_editId.HasValue)
-                {
-                    // При редактировании тоже передаем ставку и тип!
-                    string rateForServer = rate.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    request = new NetworkMessage { Command = "UPDATE_EMPLOYEE", Data = $"{_editId.Value}|{name}|{posId}|{deptId}|{rateForServer}|{empType}" };
-                }
-                else
-                {
-                    // При передаче тоже используем InvariantCulture, чтобы сервер понял
-                    string rateForServer = rate.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    request = new NetworkMessage { Command = "ADD_EMPLOYEE", Data = $"{name}|{posId}|{deptId}|{rateForServer}|{empType}" };
-                }
+                NetworkMessage request = _editId.HasValue
+                    ? new NetworkMessage { Command = "UPDATE_EMPLOYEE", Data = $"{_editId.Value}|{name}|{posId}|{deptId}|{rateForServer}|{empType}" }
+                    : new NetworkMessage { Command = "ADD_EMPLOYEE", Data = $"{name}|{posId}|{deptId}|{rateForServer}|{empType}" };
 
                 var res = new ServerConnection().SendRequest(request);
 
@@ -191,7 +253,10 @@ namespace PayrollClient
                     this.DialogResult = DialogResult.OK;
                     this.Close();
                 }
-                else { MessageBox.Show("Ошибка сервера.", "Ошибка"); }
+                else
+                {
+                    MessageBox.Show("Ошибка сервера: " + res.ErrorMessage, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
             catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
         }
