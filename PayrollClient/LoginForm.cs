@@ -85,6 +85,7 @@ namespace PayrollClient
             btnLogin.Click += btnLogin_Click;
 
             centerPanel.Controls.Add(btnLogin);
+            this.AcceptButton = btnLogin;
         }
 
         // --- ВАШ СТАРЫЙ КОД ОБРАБОТКИ КНОПКИ ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ ---
@@ -113,6 +114,7 @@ namespace PayrollClient
                 if (response.IsSuccess)
                 {
                     MainForm mainForm = new MainForm(response.Data);
+                    mainForm.FormClosed += (s, args) => this.Close();
                     mainForm.Show();
                     this.Hide();
                 }

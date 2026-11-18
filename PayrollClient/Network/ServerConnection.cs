@@ -23,9 +23,9 @@ namespace PayrollClient.Network
         {
             using (TcpClient client = new TcpClient())
             {
-                // Таймаут подключения (3 секунды)
-                client.ReceiveTimeout = 3000;
-                client.SendTimeout = 3000;
+                // Таймаут подключения и обмена данными (10 секунд)
+                client.ReceiveTimeout = 10000;
+                client.SendTimeout = 10000;
 
                 client.Connect(_ip, _port);
                 using (NetworkStream stream = client.GetStream())
@@ -38,10 +38,15 @@ namespace PayrollClient.Network
                     stream.Write(lengthBytes, 0, 4);
                     stream.Write(data, 0, data.Length);
 
-                    // Читаем размер ответа
+                    // Читаем размер ответа (гарантированно все 4 байта)
                     byte[] lengthBuffer = new byte[4];
-                    int bytesRead = stream.Read(lengthBuffer, 0, 4);
-                    if (bytesRead < 4) throw new Exception("Сервер разорвал соединение.");
+                    int headerRead = 0;
+                    while (headerRead < 4)
+                    {
+                        int read = stream.Read(lengthBuffer, headerRead, 4 - headerRead);
+                        if (read == 0) throw new Exception("Сервер разорвал соединение.");
+                        headerRead += read;
+                    }
 
                     int responseLength = BitConverter.ToInt32(lengthBuffer, 0);
                     byte[] responseBytes = new byte[responseLength];

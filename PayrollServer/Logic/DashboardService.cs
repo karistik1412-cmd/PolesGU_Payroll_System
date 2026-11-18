@@ -21,8 +21,8 @@ namespace PayrollServer.Logic
                 object sumObj = cmd3.ExecuteScalar();
                 decimal totalFund = sumObj != System.DBNull.Value ? (decimal)sumObj : 0;
 
-                // Возвращаем строку, которую клиент разобьет
-                return $"{empCount}|{userCount}|{totalFund}";
+                // Возвращаем строку, которую клиент разобьет (сумма в InvariantCulture)
+                return $"{empCount}|{userCount}|{totalFund.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             }
         }
     }
