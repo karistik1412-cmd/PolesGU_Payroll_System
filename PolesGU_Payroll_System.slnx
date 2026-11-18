@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PayrollClient/PayrollClient.csproj" Id="4c79b0c1-7734-4516-a7bc-a8f8530bcc7c" />
+  <Project Path="PayrollServer/PayrollServer.csproj" Id="d4aba7ae-0f64-430f-adea-fbd1dcf4cfb7" />
+</Solution>
