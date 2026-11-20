@@ -1753,7 +1753,10 @@ namespace PayrollClient
                 {
                     doc.DocumentName = $"Графики_ФОТ_ПолесГУ_{periodLabel}";
                     doc.DefaultPageSettings.Landscape = true;
-                    doc.DefaultPageSettings.Margins = new Margins(36, 36, 32, 32);
+                    // Явная квалификация: System.Drawing.Printing.Margins не должен конфликтовать
+                    // с System.Windows.Forms.DataVisualization.Charting.Margins (CS0104)
+                    doc.DefaultPageSettings.Margins =
+                        new System.Drawing.Printing.Margins(36, 36, 32, 32);
 
                     doc.PrintPage += (s, e) =>
                     {
