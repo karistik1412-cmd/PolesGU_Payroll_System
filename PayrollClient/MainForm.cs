@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
+using System.Drawing.Printing;
 using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
@@ -16,22 +17,21 @@ namespace PayrollClient
     public partial class MainForm : Form
     {
         private readonly string _userRole;
+        private readonly int _currentUserId = -1;
+        private readonly string _currentUserLogin = string.Empty;
+
         private readonly Panel _contentPanel;
         private Button _activeButton;
 
-        // Ссылки на кнопки меню для быстрой навигации с главной страницы
-        private Button _btnMenuEmployees;
-        private Button _btnMenuTimesheet;
-        private Button _btnMenuPayroll;
-        private Button _btnMenuCharts;
-
-        // Кэш последнего расчета и выбранный расчетный период
+        // Кэш последнего расчёта и выбранный расчётный период
         private DataTable _payrollCache = null;
         private int _payrollCacheMonth = -1;
         private int _payrollCacheYear = -1;
+        private int _payrollCacheHalfMode = 2;
 
         private int _selectedMonth = DateTime.Now.Month;
-        private int _selectedYear = 2026;
+        private int _selectedYear = DateTime.Now.Year >= 2020 && DateTime.Now.Year <= 2035 ? DateTime.Now.Year : 2026;
+        private int _selectedHalfMode = 2; // 1 — 1-я половина (аванс), 2 — итог месяца (1-я + 2-я половина)
 
         private readonly string[] _months = ExcelTimesheetService.MonthNames;
         private readonly string[] _shortMonths =
@@ -40,15 +40,29 @@ namespace PayrollClient
             "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"
         };
 
-        private const int SidebarWidth = 245;
+        private const int SidebarWidth = 240;
         private const int ContentMargin = 20;
 
-        public MainForm(string role)
+        public MainForm(string authData)
         {
-            _userRole = role;
-            this.Text = $"ПолесГУ — Система начисления заработной платы | {_userRole}";
-            this.Size = new Size(1280, 740);
-            this.MinimumSize = new Size(1200, 640);
+            // Поддерживаем формат "Роль|UserID|Логин" и прежний "Роль"
+            string[] parts = (authData ?? string.Empty).Split('|');
+            _userRole = parts.Length > 0 ? parts[0] : "Сотрудник";
+            if (parts.Length > 1) int.TryParse(parts[1], out _currentUserId);
+            if (parts.Length > 2) _currentUserLogin = parts[2];
+
+            // Если сейчас середина месяца (15–24 число), по умолчанию ставим расчёт 1-й половины (аванс)
+            int dayToday = DateTime.Today.Day;
+            if (dayToday >= 15 && dayToday < 25)
+                _selectedHalfMode = 1;
+
+            string userCaption = !string.IsNullOrEmpty(_currentUserLogin)
+                ? $"{_currentUserLogin} ({_userRole})"
+                : _userRole;
+
+            this.Text = $"ПолесГУ — Система начисления заработной платы | {userCaption}";
+            this.Size = new Size(1320, 750);
+            this.MinimumSize = new Size(1285, 650);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = UiTheme.PageBg;
             this.Font = new Font("Segoe UI", 9.75f);
@@ -122,13 +136,13 @@ namespace PayrollClient
 
             // --- ПУНКТЫ МЕНЮ ---
             Button btnHome = AddMenuButton(sidebar, "Главная", (s, e) => ShowWelcomeScreen());
-            _btnMenuEmployees = AddMenuButton(sidebar, "Сотрудники", (s, e) => LoadEmployeesScreen());
+            AddMenuButton(sidebar, "Сотрудники", (s, e) => LoadEmployeesScreen());
 
             if (_userRole == "Бухгалтер" || _userRole == "Администратор")
             {
-                _btnMenuTimesheet = AddMenuButton(sidebar, "Табель", (s, e) => LoadTimesheetScreen());
-                _btnMenuPayroll = AddMenuButton(sidebar, "Расчет зарплаты", (s, e) => LoadPayrollScreen());
-                _btnMenuCharts = AddMenuButton(sidebar, "Графики", (s, e) => LoadChartsScreen());
+                AddMenuButton(sidebar, "Табель", (s, e) => LoadTimesheetScreen());
+                AddMenuButton(sidebar, "Расчет зарплаты", (s, e) => LoadPayrollScreen());
+                AddMenuButton(sidebar, "Графики", (s, e) => LoadChartsScreen());
             }
             if (_userRole == "Администратор")
             {
@@ -139,7 +153,7 @@ namespace PayrollClient
             Panel bottomPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 84,
+                Height = 86,
                 BackColor = UiTheme.SidebarHeaderBg
             };
             bottomPanel.Paint += (s, e) =>
@@ -150,12 +164,16 @@ namespace PayrollClient
                 }
             };
 
+            string profileText = !string.IsNullOrEmpty(_currentUserLogin)
+                ? $"{_currentUserLogin} · {_userRole}"
+                : $"Роль: {_userRole}";
+
             Label lblRoleInfo = new Label
             {
-                Text = $"Роль: {_userRole}",
+                Text = profileText,
                 ForeColor = UiTheme.SidebarTextMuted,
-                Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
-                Location = new Point(24, 11),
+                Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
+                Location = new Point(22, 12),
                 AutoSize = true
             };
             bottomPanel.Controls.Add(lblRoleInfo);
@@ -223,7 +241,6 @@ namespace PayrollClient
             btn.FlatAppearance.MouseOverBackColor = UiTheme.SidebarHover;
             btn.FlatAppearance.MouseDownBackColor = UiTheme.SidebarActive;
 
-            // Белая вертикальная полоса-индикатор активного раздела слева
             btn.Paint += (s, e) =>
             {
                 if (btn == _activeButton)
@@ -254,22 +271,24 @@ namespace PayrollClient
             return toolbar;
         }
 
-        private void AddPeriodSelectors(Panel toolbar, out ComboBox cmbMonth, out NumericUpDown nudYear)
+        private void AddPeriodSelectors(Panel toolbar, out ComboBox cmbMonth, out NumericUpDown nudYear, bool compact = false)
         {
             Label lblMonth = new Label
             {
                 Text = "Месяц:",
-                Location = new Point(14, 16),
+                Location = new Point(compact ? 10 : 14, 16),
                 AutoSize = true,
-                Font = new Font("Segoe UI", 9.25f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = UiTheme.TextSecondary
             };
             toolbar.Controls.Add(lblMonth);
 
+            int monthX = compact ? 60 : 68;
+            int monthW = compact ? 104 : 118;
             cmbMonth = new ComboBox
             {
-                Location = new Point(68, 12),
-                Size = new Size(118, 28),
+                Location = new Point(monthX, 12),
+                Size = new Size(monthW, 28),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.White,
@@ -279,20 +298,21 @@ namespace PayrollClient
             cmbMonth.SelectedIndex = _selectedMonth - 1;
             toolbar.Controls.Add(cmbMonth);
 
+            int yearLblX = monthX + monthW + (compact ? 8 : 12);
             Label lblYear = new Label
             {
                 Text = "Год:",
-                Location = new Point(198, 16),
+                Location = new Point(yearLblX, 16),
                 AutoSize = true,
-                Font = new Font("Segoe UI", 9.25f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = UiTheme.TextSecondary
             };
             toolbar.Controls.Add(lblYear);
 
             nudYear = new NumericUpDown
             {
-                Location = new Point(234, 13),
-                Size = new Size(70, 28),
+                Location = new Point(yearLblX + 34, 13),
+                Size = new Size(compact ? 64 : 70, 28),
                 Minimum = 2020,
                 Maximum = 2035,
                 Value = _selectedYear,
@@ -303,8 +323,20 @@ namespace PayrollClient
             toolbar.Controls.Add(nudYear);
         }
 
+        private static int CountWorkingDaysLocal(int year, int month)
+        {
+            int total = DateTime.DaysInMonth(year, month);
+            int wd = 0;
+            for (int d = 1; d <= total; d++)
+            {
+                DayOfWeek dow = new DateTime(year, month, d).DayOfWeek;
+                if (dow != DayOfWeek.Saturday && dow != DayOfWeek.Sunday) wd++;
+            }
+            return wd;
+        }
+
         // =========================================================================
-        // 1. ГЛАВНАЯ СТРАНИЦА (ДАШБОРД — БЕЗ НИЖНЕЙ СТРОКИ ИТОГОВ)
+        // 1. ГЛАВНАЯ СТРАНИЦА (БЕЗ НИЖНЕЙ СТРОКИ И БЕЗ ДУБЛИРУЮЩИХ КНОПОК МЕНЮ)
         // =========================================================================
         private void ShowWelcomeScreen()
         {
@@ -339,10 +371,10 @@ namespace PayrollClient
             }
             catch (Exception)
             {
-                // Если сервер ещё не запущен, показываем аккуратные прочерки
+                // Если сервер недоступен, отображаем аккуратные прочерки
             }
 
-            // Сетка из 4 карточек ключевых показателей
+            // 4 карточки ключевых показателей
             TableLayoutPanel kpiGrid = new TableLayoutPanel
             {
                 Location = new Point(ContentMargin - 6, 80),
@@ -357,59 +389,64 @@ namespace PayrollClient
             kpiGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
             _contentPanel.Controls.Add(kpiGrid);
 
-            kpiGrid.Controls.Add(CreateStatCard("СОТРУДНИКОВ В ШТАТЕ", empCount, "Активные записи в базе"), 0, 0);
-            kpiGrid.Controls.Add(CreateStatCard("ПОДРАЗДЕЛЕНИЙ", deptCount, "Кафедры и отделы вуза"), 1, 0);
+            kpiGrid.Controls.Add(CreateStatCard("СОТРУДНИКОВ В ШТАТЕ", empCount, "Физических лиц в базе"), 0, 0);
+            kpiGrid.Controls.Add(CreateStatCard("КАФЕДР", deptCount, "Учебные кафедры ПолесГУ"), 1, 0);
             kpiGrid.Controls.Add(CreateStatCard("ПОЛЬЗОВАТЕЛЕЙ", userCount, "Учётные записи системы"), 2, 0);
             kpiGrid.Controls.Add(CreateStatCard("ОБЩИЙ ФОНД ВЫПЛАТ", $"{fundText} р.", "Сумма сохранённых расчётов"), 3, 0);
 
-            // Карточка быстрого перехода по разделам
-            Panel quickCard = UiTheme.CreateCardPanel(leftAccent: true, topAccent: false);
-            quickCard.Location = new Point(ContentMargin, 232);
-            quickCard.Size = new Size(_contentPanel.ClientSize.Width - (ContentMargin * 2), 125);
-            quickCard.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            _contentPanel.Controls.Add(quickCard);
+            // Справочная карточка текущего расчётного периода (без дублирующих кнопок)
+            DateTime today = DateTime.Today;
+            int curWorkDays = CountWorkingDaysLocal(today.Year, today.Month);
+            decimal curTeacherHours = Math.Round(curWorkDays * 7.2m, 1);
 
-            Label lblQuickTitle = new Label
+            string payoutStage;
+            if (today.Day < 15)
+                payoutStage = "Идёт 1-я половина месяца (расчёт аванса открывается с 15-го числа)";
+            else if (today.Day < 25)
+                payoutStage = "Доступен расчёт 1-й половины (аванс); окончательный расчёт — с 25-го числа";
+            else
+                payoutStage = "Доступен окончательный расчёт за весь месяц (1-я и 2-я половины)";
+
+            Panel infoCard = UiTheme.CreateCardPanel(leftAccent: true, topAccent: false);
+            infoCard.Location = new Point(ContentMargin, 232);
+            infoCard.Size = new Size(_contentPanel.ClientSize.Width - (ContentMargin * 2), 148);
+            infoCard.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            _contentPanel.Controls.Add(infoCard);
+
+            Label lblInfoTitle = new Label
             {
-                Text = "Быстрый переход к разделам",
-                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+                Text = $"Справка по текущему периоду — {_months[today.Month - 1]} {today.Year} г. (сегодня {today:dd.MM.yyyy})",
+                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 ForeColor = UiTheme.TextPrimary,
-                Location = new Point(22, 16),
+                Location = new Point(22, 15),
                 AutoSize = true
             };
-            Label lblQuickSub = new Label
+            Label lblLine1 = new Label
             {
-                Text = $"Текущий расчётный период: {_months[_selectedMonth - 1]} {_selectedYear} г.",
-                Font = new Font("Segoe UI", 8.75f, FontStyle.Regular),
+                Text = $"• Плановая норма месяца (на 1,0 ставку ППС):  {curWorkDays} раб. дн.  /  {curTeacherHours:0.#} ч.",
+                Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
+                ForeColor = UiTheme.TextPrimary,
+                Location = new Point(22, 48),
+                AutoSize = true
+            };
+            Label lblLine2 = new Label
+            {
+                Text = $"• График выплаты зарплаты:  {payoutStage}",
+                Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
+                ForeColor = UiTheme.TextPrimary,
+                Location = new Point(22, 76),
+                AutoSize = true
+            };
+            Label lblLine3 = new Label
+            {
+                Text = "• Учёт при расчёте:  суммирование ставок по совместительству, больничные (Б) и отпуска (О), налоговые льготы (ст. 209 НК РБ)",
+                Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
                 ForeColor = UiTheme.TextSecondary,
-                Location = new Point(22, 41),
+                Location = new Point(22, 104),
                 AutoSize = true
             };
-            quickCard.Controls.Add(lblQuickTitle);
-            quickCard.Controls.Add(lblQuickSub);
 
-            int bx = 22;
-            Button qEmp = UiTheme.CreateOutlineButton("Список сотрудников", bx, 72, 175, 36);
-            qEmp.Click += (s, e) => { SetActiveButton(_btnMenuEmployees); LoadEmployeesScreen(); };
-            quickCard.Controls.Add(qEmp);
-            bx += 187;
-
-            if (_userRole == "Бухгалтер" || _userRole == "Администратор")
-            {
-                Button qTab = UiTheme.CreatePrimaryButton("Импорт и просмотр табеля", bx, 72, 210, 36);
-                qTab.Click += (s, e) => { SetActiveButton(_btnMenuTimesheet); LoadTimesheetScreen(); };
-                quickCard.Controls.Add(qTab);
-                bx += 222;
-
-                Button qPay = UiTheme.CreateAccentButton("Расчёт зарплаты", bx, 72, 165, 36);
-                qPay.Click += (s, e) => { SetActiveButton(_btnMenuPayroll); LoadPayrollScreen(); };
-                quickCard.Controls.Add(qPay);
-                bx += 177;
-
-                Button qCharts = UiTheme.CreateOutlineButton("Открыть графики", bx, 72, 160, 36);
-                qCharts.Click += (s, e) => { SetActiveButton(_btnMenuCharts); LoadChartsScreen(); };
-                quickCard.Controls.Add(qCharts);
-            }
+            infoCard.Controls.AddRange(new Control[] { lblInfoTitle, lblLine1, lblLine2, lblLine3 });
         }
 
         private Panel CreateStatCard(string title, string value, string caption)
@@ -452,7 +489,7 @@ namespace PayrollClient
         }
 
         // =========================================================================
-        // 2. ЭКРАН «СОТРУДНИКИ»
+        // 2. ЭКРАН «СОТРУДНИКИ» (СОВМЕСТИТЕЛЬСТВО, ЛЬГОТЫ, КАФЕДРЫ БЕЗ СЛОВА «КАФЕДРА»)
         // =========================================================================
         private void LoadEmployeesScreen()
         {
@@ -461,19 +498,21 @@ namespace PayrollClient
             UiTheme.CreatePageHeader(
                 _contentPanel,
                 "Сотрудники университета",
-                "Учёт профессорско-преподавательского состава и сотрудников подразделений ПолесГУ");
+                "Учёт профессорско-преподавательского состава кафедр, совместительства и налоговых льгот");
 
             bool canManage = _userRole == "Администратор" || _userRole == "Бухгалтер";
             Panel toolbar = CreateToolbarCard();
 
-            Button btnAddEmp = UiTheme.CreatePrimaryButton("+ Принять на работу", 12, 8, 175);
-            Button btnEditEmp = UiTheme.CreateOutlineButton("Редактировать", 197, 8, 138);
-            Button btnDetails = UiTheme.CreateOutlineButton("Карточка сотрудника", canManage ? 345 : 12, 8, 168);
-            Button btnDeleteEmp = UiTheme.CreateDangerButton("Уволить", 523, 8, 110);
+            Button btnAddEmp = UiTheme.CreatePrimaryButton("+ Принять на работу", 12, 8, 172);
+            Button btnAddPartTime = UiTheme.CreateAccentButton("+ Совместительство", 192, 8, 168);
+            Button btnEditEmp = UiTheme.CreateOutlineButton("Редактировать", 368, 8, 135);
+            Button btnDetails = UiTheme.CreateOutlineButton("Карточка сотрудника", canManage ? 511 : 12, 8, 166);
+            Button btnDeleteEmp = UiTheme.CreateDangerButton("Уволить", 685, 8, 106);
 
             if (canManage)
             {
                 toolbar.Controls.Add(btnAddEmp);
+                toolbar.Controls.Add(btnAddPartTime);
                 toolbar.Controls.Add(btnEditEmp);
                 toolbar.Controls.Add(btnDeleteEmp);
             }
@@ -496,43 +535,66 @@ namespace PayrollClient
                     if (response.IsSuccess)
                     {
                         DataTable dt = JsonConvert.DeserializeObject<DataTable>(response.Data);
+
+                        // На случай старых данных убираем префикс «Кафедра »
+                        if (dt.Columns.Contains("Кафедра"))
+                        {
+                            foreach (DataRow r in dt.Rows)
+                            {
+                                if (r["Кафедра"] != DBNull.Value)
+                                    r["Кафедра"] = UiTheme.FormatDepartmentName(r["Кафедра"].ToString());
+                            }
+                        }
+
                         dgv.DataSource = dt;
 
-                        if (dgv.Columns["EmployeeID"] != null) dgv.Columns["EmployeeID"].Visible = false;
-                        if (dgv.Columns["PositionID"] != null) dgv.Columns["PositionID"].Visible = false;
-                        if (dgv.Columns["DepartmentID"] != null) dgv.Columns["DepartmentID"].Visible = false;
-
-                        if (dgv.Columns["ФИО"] != null) dgv.Columns["ФИО"].FillWeight = 165;
-                        if (dgv.Columns["Кафедра"] != null) dgv.Columns["Кафедра"].FillWeight = 160;
-                        if (dgv.Columns["Должность"] != null) dgv.Columns["Должность"].FillWeight = 120;
-                        if (dgv.Columns["Стаж"] != null)
+                        string[] hiddenCols = { "EmployeeID", "PositionID", "DepartmentID", "BenefitCategory", "ChildrenBenefit" };
+                        foreach (string hc in hiddenCols)
                         {
-                            dgv.Columns["Стаж"].FillWeight = 50;
-                            dgv.Columns["Стаж"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                            if (dgv.Columns[hc] != null) dgv.Columns[hc].Visible = false;
+                        }
+
+                        if (dgv.Columns["ФИО"] != null) dgv.Columns["ФИО"].FillWeight = 155;
+                        if (dgv.Columns["Кафедра"] != null) dgv.Columns["Кафедра"].FillWeight = 155;
+                        if (dgv.Columns["Должность"] != null) dgv.Columns["Должность"].FillWeight = 115;
+                        if (dgv.Columns["Стаж, лет"] != null)
+                        {
+                            dgv.Columns["Стаж, лет"].FillWeight = 62;
+                            dgv.Columns["Стаж, лет"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                            dgv.Columns["Стаж, лет"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                         }
                         if (dgv.Columns["Ставка"] != null)
                         {
-                            dgv.Columns["Ставка"].FillWeight = 55;
+                            dgv.Columns["Ставка"].FillWeight = 52;
                             dgv.Columns["Ставка"].DefaultCellStyle.Format = "0.##";
                             dgv.Columns["Ставка"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                            dgv.Columns["Ставка"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                         }
-                        if (dgv.Columns["Тип занятости"] != null) dgv.Columns["Тип занятости"].FillWeight = 120;
-                        if (dgv.Columns["Дата приема"] != null)
+                        if (dgv.Columns["Тип занятости"] != null) dgv.Columns["Тип занятости"].FillWeight = 115;
+                        if (dgv.Columns["Льготы"] != null) dgv.Columns["Льготы"].FillWeight = 125;
+                        if (dgv.Columns["Дата приёма"] != null)
                         {
-                            dgv.Columns["Дата приема"].FillWeight = 85;
-                            dgv.Columns["Дата приема"].DefaultCellStyle.Format = "dd.MM.yyyy";
-                            dgv.Columns["Дата приема"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                            dgv.Columns["Дата приёма"].FillWeight = 82;
+                            dgv.Columns["Дата приёма"].DefaultCellStyle.Format = "dd.MM.yyyy";
+                            dgv.Columns["Дата приёма"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                            dgv.Columns["Дата приёма"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                         }
 
                         // Сводные показатели в нижней панели
-                        int totalEmp = dt.Rows.Count;
+                        var uniquePeople = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        var peopleWithBenefits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         var departments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         decimal sumRates = 0m;
                         double sumExpYears = 0.0;
                         int expCount = 0;
 
+                        string hireCol = dt.Columns.Contains("Дата приёма") ? "Дата приёма" : "Дата приема";
+
                         foreach (DataRow row in dt.Rows)
                         {
+                            string fn = row["ФИО"].ToString().Trim();
+                            bool isFirstRecordOfPerson = uniquePeople.Add(fn);
+
                             if (dt.Columns.Contains("Кафедра") && row["Кафедра"] != DBNull.Value)
                                 departments.Add(row["Кафедра"].ToString());
 
@@ -541,21 +603,32 @@ namespace PayrollClient
                             else
                                 sumRates += 1.0m;
 
-                            if (dt.Columns.Contains("Дата приема") && row["Дата приема"] != DBNull.Value)
+                            if (dt.Columns.Contains("Льготы") && row["Льготы"] != DBNull.Value)
                             {
-                                DateTime hd = Convert.ToDateTime(row["Дата приема"]);
-                                double yrs = Math.Max(0.0, (DateTime.Today - hd).TotalDays / 365.25);
-                                sumExpYears += yrs;
+                                string ben = row["Льготы"].ToString();
+                                if (!string.IsNullOrEmpty(ben) && ben != "Нет")
+                                    peopleWithBenefits.Add(fn);
+                            }
+
+                            if (isFirstRecordOfPerson && dt.Columns.Contains(hireCol) && row[hireCol] != DBNull.Value)
+                            {
+                                DateTime hd = Convert.ToDateTime(row[hireCol]);
+                                sumExpYears += Math.Max(0.0, (DateTime.Today - hd).TotalDays / 365.25);
                                 expCount++;
                             }
                         }
 
                         double avgExp = expCount > 0 ? sumExpYears / expCount : 0.0;
+                        string peopleText = dt.Rows.Count > uniquePeople.Count
+                            ? $"Сотрудников: {uniquePeople.Count} (записей: {dt.Rows.Count})"
+                            : $"Сотрудников: {uniquePeople.Count}";
+
                         lblFooter.Text =
-                            $"Сотрудников: {totalEmp}   |   " +
-                            $"Подразделений: {departments.Count}   |   " +
-                            $"Суммарно ставок: {sumRates:0.##}   |   " +
-                            $"Средний стаж в вузе: {avgExp:N1} г.";
+                            $"{peopleText}  |  " +
+                            $"Кафедр: {departments.Count}  |  " +
+                            $"Суммарно ставок: {sumRates:0.##}  |  " +
+                            $"С льготами: {peopleWithBenefits.Count}  |  " +
+                            $"Средний стаж: {avgExp:N1} г.";
                     }
                     else
                     {
@@ -569,6 +642,34 @@ namespace PayrollClient
             btnAddEmp.Click += (s, e) =>
             {
                 using (var form = new AddEmployeeForm())
+                {
+                    if (form.ShowDialog() == DialogResult.OK)
+                    {
+                        _payrollCache = null;
+                        loadData();
+                    }
+                }
+            };
+
+            // Быстрое добавление внутреннего совместительства выбранному преподавателю (на той же или другой кафедре)
+            btnAddPartTime.Click += (s, e) =>
+            {
+                if (dgv.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("Выберите сотрудника, которому нужно оформить внутреннее совместительство.");
+                    return;
+                }
+
+                DataGridViewRow sel = dgv.SelectedRows[0];
+                string fullName = sel.Cells["ФИО"].Value.ToString();
+                int posId = Convert.ToInt32(sel.Cells["PositionID"].Value);
+                int deptId = Convert.ToInt32(sel.Cells["DepartmentID"].Value);
+                int benCat = dgv.Columns["BenefitCategory"] != null && sel.Cells["BenefitCategory"].Value != DBNull.Value
+                    ? Convert.ToInt32(sel.Cells["BenefitCategory"].Value) : 0;
+                int childBen = dgv.Columns["ChildrenBenefit"] != null && sel.Cells["ChildrenBenefit"].Value != DBNull.Value
+                    ? Convert.ToInt32(sel.Cells["ChildrenBenefit"].Value) : 0;
+
+                using (var form = new AddEmployeeForm(fullName, posId, deptId, benCat, childBen))
                 {
                     if (form.ShowDialog() == DialogResult.OK)
                     {
@@ -595,7 +696,12 @@ namespace PayrollClient
                 if (dgv.Columns["Тип занятости"] != null && sel.Cells["Тип занятости"].Value != null && sel.Cells["Тип занятости"].Value != DBNull.Value)
                     empType = sel.Cells["Тип занятости"].Value.ToString();
 
-                using (var form = new AddEmployeeForm(empId, fullName, posId, deptId, rate, empType))
+                int benCat = dgv.Columns["BenefitCategory"] != null && sel.Cells["BenefitCategory"].Value != DBNull.Value
+                    ? Convert.ToInt32(sel.Cells["BenefitCategory"].Value) : 0;
+                int childBen = dgv.Columns["ChildrenBenefit"] != null && sel.Cells["ChildrenBenefit"].Value != DBNull.Value
+                    ? Convert.ToInt32(sel.Cells["ChildrenBenefit"].Value) : 0;
+
+                using (var form = new AddEmployeeForm(empId, fullName, posId, deptId, rate, empType, benCat, childBen))
                 {
                     if (form.ShowDialog() == DialogResult.OK)
                     {
@@ -607,10 +713,15 @@ namespace PayrollClient
 
             btnDeleteEmp.Click += (s, e) =>
             {
-                if (dgv.SelectedRows.Count == 0) { MessageBox.Show("Выберите сотрудника!"); return; }
-                int empId = Convert.ToInt32(dgv.SelectedRows[0].Cells["EmployeeID"].Value);
-                string fullName = dgv.SelectedRows[0].Cells["ФИО"].Value.ToString();
-                if (MessageBox.Show($"Вы уверены, что хотите уволить сотрудника {fullName}?", "Увольнение",
+                if (dgv.SelectedRows.Count == 0) { MessageBox.Show("Выберите запись сотрудника!"); return; }
+                DataGridViewRow sel = dgv.SelectedRows[0];
+                int empId = Convert.ToInt32(sel.Cells["EmployeeID"].Value);
+                string fullName = sel.Cells["ФИО"].Value.ToString();
+                string empType = dgv.Columns["Тип занятости"] != null ? sel.Cells["Тип занятости"].Value.ToString() : "Основное";
+
+                if (MessageBox.Show(
+                    $"Удалить запись сотрудника «{fullName}» ({empType})?",
+                    "Увольнение / снятие совместительства",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 {
                     var res = new ServerConnection().SendRequest(new NetworkMessage { Command = "DELETE_EMPLOYEE", Data = empId.ToString() });
@@ -618,7 +729,7 @@ namespace PayrollClient
                     {
                         _payrollCache = null;
                         loadData();
-                        MessageBox.Show("Сотрудник уволен!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show("Запись сотрудника удалена.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     else
                     {
@@ -630,16 +741,33 @@ namespace PayrollClient
             btnDetails.Click += (s, e) =>
             {
                 if (dgv.SelectedRows.Count == 0) { MessageBox.Show("Выберите сотрудника!"); return; }
-                string fullName = dgv.SelectedRows[0].Cells["ФИО"].Value.ToString();
-                string position = dgv.SelectedRows[0].Cells["Должность"].Value.ToString();
-                string department = dgv.SelectedRows[0].Cells["Кафедра"].Value.ToString();
-                DateTime hireDate = Convert.ToDateTime(dgv.SelectedRows[0].Cells["Дата приема"].Value);
-                ShowEmployeeDetails(fullName, position, department, hireDate);
+                DataGridViewRow sel = dgv.SelectedRows[0];
+                string fullName = sel.Cells["ФИО"].Value.ToString();
+                string position = sel.Cells["Должность"].Value.ToString();
+                string department = sel.Cells["Кафедра"].Value.ToString();
+                string hireCol = dgv.Columns["Дата приёма"] != null ? "Дата приёма" : "Дата приема";
+                DateTime hireDate = Convert.ToDateTime(sel.Cells[hireCol].Value);
+                string empType = dgv.Columns["Тип занятости"] != null ? sel.Cells["Тип занятости"].Value.ToString() : "Основное";
+                string benefits = dgv.Columns["Льготы"] != null ? sel.Cells["Льготы"].Value.ToString() : "Нет";
+
+                // Считаем суммарную ставку этого сотрудника по всем его записям (основное + совместительство)
+                decimal totalRate = 0m;
+                DataTable dt = dgv.DataSource as DataTable;
+                if (dt != null && dt.Columns.Contains("Ставка"))
+                {
+                    foreach (DataRow r in dt.Rows)
+                    {
+                        if (string.Equals(r["ФИО"].ToString().Trim(), fullName.Trim(), StringComparison.OrdinalIgnoreCase))
+                            totalRate += Convert.ToDecimal(r["Ставка"]);
+                    }
+                }
+
+                ShowEmployeeDetails(fullName, position, department, empType, totalRate, benefits, hireDate);
             };
         }
 
         // =========================================================================
-        // 3. ЭКРАН «ТАБЕЛЬ» (БЕЗ КНОПКИ «СОЗДАТЬ БОЛВАНКУ» И БЕЗ ЛИШНЕЙ ПОДПИСИ)
+        // 3. ЭКРАН «ТАБЕЛЬ» (БЕЗ ДОЛЖНОСТИ И СТАВКИ, С УЧЁТОМ Б/О И ЕДИНИЦАМИ ИЗМЕРЕНИЯ)
         // =========================================================================
         private void LoadTimesheetScreen()
         {
@@ -685,16 +813,18 @@ namespace PayrollClient
             {
                 if (table == null || table.Rows.Count == 0)
                 {
-                    lblFooter.Text = "Сотрудников: 0   |   Нет данных для отображения.";
+                    lblFooter.Text = "Записей: 0  |  Нет данных для отображения.";
                     return;
                 }
 
-                int totalEmp = table.Rows.Count;
+                int totalRows = table.Rows.Count;
                 int loadedCount = 0;
                 int sumFactDays = 0;
                 int sumNormDays = 0;
                 decimal sumFactHours = 0m;
                 decimal sumNormHours = 0m;
+                int sumSick = 0;
+                int sumVac = 0;
 
                 foreach (DataRow row in table.Rows)
                 {
@@ -703,22 +833,35 @@ namespace PayrollClient
                     {
                         loadedCount++;
                     }
-                    if (table.Columns.Contains("Отработано дней") && row["Отработано дней"] != DBNull.Value)
-                        sumFactDays += Convert.ToInt32(row["Отработано дней"]);
-                    if (table.Columns.Contains("Норма дней") && row["Норма дней"] != DBNull.Value)
-                        sumNormDays += Convert.ToInt32(row["Норма дней"]);
-                    if (table.Columns.Contains("Отработано часов") && row["Отработано часов"] != DBNull.Value)
-                        sumFactHours += Convert.ToDecimal(row["Отработано часов"]);
-                    if (table.Columns.Contains("Норма часов") && row["Норма часов"] != DBNull.Value)
-                        sumNormHours += Convert.ToDecimal(row["Норма часов"]);
+                    if (table.Columns.Contains("Отработано, дн.") && row["Отработано, дн."] != DBNull.Value)
+                        sumFactDays += Convert.ToInt32(row["Отработано, дн."]);
+                    if (table.Columns.Contains("Норма, дн.") && row["Норма, дн."] != DBNull.Value)
+                        sumNormDays += Convert.ToInt32(row["Норма, дн."]);
+                    if (table.Columns.Contains("Отработано, ч.") && row["Отработано, ч."] != DBNull.Value)
+                        sumFactHours += Convert.ToDecimal(row["Отработано, ч."]);
+                    if (table.Columns.Contains("Норма, ч.") && row["Норма, ч."] != DBNull.Value)
+                        sumNormHours += Convert.ToDecimal(row["Норма, ч."]);
+                    if (table.Columns.Contains("Больничный (Б), дн.") && row["Больничный (Б), дн."] != DBNull.Value)
+                        sumSick += Convert.ToInt32(row["Больничный (Б), дн."]);
+                    if (table.Columns.Contains("Отпуск (О), дн.") && row["Отпуск (О), дн."] != DBNull.Value)
+                        sumVac += Convert.ToInt32(row["Отпуск (О), дн."]);
                 }
 
                 decimal pct = sumNormHours > 0m ? Math.Round((sumFactHours / sumNormHours) * 100m, 1) : 0m;
                 lblFooter.Text =
-                    $"Сотрудников: {totalEmp}   |   " +
-                    $"Из табеля: {loadedCount} из {totalEmp}   |   " +
-                    $"Дни (факт / норма): {sumFactDays} / {sumNormDays}   |   " +
-                    $"Часы (факт / норма): {sumFactHours:0.#} / {sumNormHours:0.#} ч. ({pct:0.#}%)";
+                    $"Записей: {totalRows}  |  " +
+                    $"Из табеля: {loadedCount}/{totalRows}  |  " +
+                    $"Дни: {sumFactDays}/{sumNormDays} дн.  |  " +
+                    $"Часы: {sumFactHours:0.#}/{sumNormHours:0.#} ч. ({pct:0.#}%)  |  " +
+                    $"Больничный (Б): {sumSick} дн.  |  " +
+                    $"Отпуск (О): {sumVac} дн.";
+            };
+
+            string[] editableCols =
+            {
+                "Отработано, дн.", "Норма, дн.",
+                "Отработано, ч.", "Норма, ч.",
+                "Больничный (Б), дн.", "Отпуск (О), дн."
             };
 
             Action loadTimesheets = () =>
@@ -742,11 +885,13 @@ namespace PayrollClient
                     DataTable dt = JsonConvert.DeserializeObject<DataTable>(res.Data);
                     dgv.DataSource = dt;
 
-                    if (dgv.Columns["EmployeeID"] != null) dgv.Columns["EmployeeID"].Visible = false;
-                    if (dgv.Columns["Category"] != null) dgv.Columns["Category"].Visible = false;
-                    if (dgv.Columns["Кафедра"] != null) dgv.Columns["Кафедра"].Visible = false;
+                    // Скрываем служебные поля (Должность и Ставка в табеле не отображаются)
+                    string[] hideCols = { "EmployeeID", "Category", "Rate", "RawFullName", "Должность", "Кафедра", "Ставка" };
+                    foreach (string hc in hideCols)
+                    {
+                        if (dgv.Columns[hc] != null) dgv.Columns[hc].Visible = false;
+                    }
 
-                    string[] editableCols = { "Отработано дней", "Норма дней", "Отработано часов", "Норма часов" };
                     foreach (DataGridViewColumn col in dgv.Columns)
                     {
                         bool isEditable = editableCols.Contains(col.Name);
@@ -756,25 +901,18 @@ namespace PayrollClient
                             col.DefaultCellStyle.BackColor = UiTheme.EditableCellBg;
                             col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
                             col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                            col.FillWeight = 82;
                         }
                     }
 
-                    if (dgv.Columns["Ставка"] != null)
-                    {
-                        dgv.Columns["Ставка"].DefaultCellStyle.Format = "0.##";
-                        dgv.Columns["Ставка"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                        dgv.Columns["Ставка"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                        dgv.Columns["Ставка"].FillWeight = 50;
-                    }
-                    if (dgv.Columns["Отработано часов"] != null) dgv.Columns["Отработано часов"].DefaultCellStyle.Format = "0.#";
-                    if (dgv.Columns["Норма часов"] != null) dgv.Columns["Норма часов"].DefaultCellStyle.Format = "0.#";
-                    if (dgv.Columns["ФИО"] != null) dgv.Columns["ФИО"].FillWeight = 155;
-                    if (dgv.Columns["Должность"] != null) dgv.Columns["Должность"].FillWeight = 115;
+                    if (dgv.Columns["Отработано, ч."] != null) dgv.Columns["Отработано, ч."].DefaultCellStyle.Format = "0.#";
+                    if (dgv.Columns["Норма, ч."] != null) dgv.Columns["Норма, ч."].DefaultCellStyle.Format = "0.#";
+                    if (dgv.Columns["ФИО"] != null) dgv.Columns["ФИО"].FillWeight = 175;
                     if (dgv.Columns["Статус"] != null)
                     {
                         dgv.Columns["Статус"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
                         dgv.Columns["Статус"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                        dgv.Columns["Статус"].FillWeight = 70;
+                        dgv.Columns["Статус"].FillWeight = 78;
                     }
 
                     foreach (DataGridViewRow row in dgv.Rows)
@@ -831,28 +969,40 @@ namespace PayrollClient
 
                     foreach (DataRow row in dt.Rows)
                     {
-                        int days = Convert.ToInt32(row["Отработано дней"]);
-                        int normD = Convert.ToInt32(row["Норма дней"]);
-                        decimal hours = Convert.ToDecimal(row["Отработано часов"]);
-                        decimal normH = Convert.ToDecimal(row["Норма часов"]);
+                        int days = Convert.ToInt32(row["Отработано, дн."]);
+                        int normD = Convert.ToInt32(row["Норма, дн."]);
+                        decimal hours = Convert.ToDecimal(row["Отработано, ч."]);
+                        decimal normH = Convert.ToDecimal(row["Норма, ч."]);
+                        int sickD = dt.Columns.Contains("Больничный (Б), дн.") ? Convert.ToInt32(row["Больничный (Б), дн."]) : 0;
+                        int vacD = dt.Columns.Contains("Отпуск (О), дн.") ? Convert.ToInt32(row["Отпуск (О), дн."]) : 0;
 
-                        if (days < 0 || days > 31 || normD <= 0 || normD > 31 || hours < 0m || normH <= 0m)
+                        if (days < 0 || days > 31 || normD <= 0 || normD > 31 ||
+                            hours < 0m || normH <= 0m || sickD < 0 || sickD > 31 || vacD < 0 || vacD > 31)
                         {
-                            MessageBox.Show($"Проверьте корректность дней и часов у сотрудника «{row["ФИО"]}».",
+                            MessageBox.Show($"Проверьте корректность дней, часов и Б/О у сотрудника «{row["ФИО"]}».",
                                 "Ошибка валидации", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                             return;
                         }
 
+                        string rawName = dt.Columns.Contains("RawFullName") && row["RawFullName"] != DBNull.Value
+                            ? row["RawFullName"].ToString()
+                            : row["ФИО"].ToString();
+                        decimal? rateVal = dt.Columns.Contains("Rate") && row["Rate"] != DBNull.Value
+                            ? (decimal?)Convert.ToDecimal(row["Rate"])
+                            : null;
+
                         entries.Add(new TimesheetEntryDto
                         {
                             EmployeeId = Convert.ToInt32(row["EmployeeID"]),
-                            FullName = row["ФИО"].ToString(),
-                            Rate = Convert.ToDecimal(row["Ставка"]),
+                            FullName = rawName,
+                            Rate = rateVal,
                             DaysWorked = days,
                             NormDays = normD,
                             HoursWorked = hours,
                             NormHours = normH,
-                            HasHours = true
+                            HasHours = true,
+                            SickDays = sickD,
+                            VacationDays = vacD
                         });
                     }
 
@@ -912,13 +1062,12 @@ namespace PayrollClient
             loadTimesheets();
         }
 
-        // Общий диалог импорта внешнего Excel-табеля с компьютера
         private bool RunExcelTimesheetImport(ref int month, ref int year)
         {
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Title = "Выберите Excel-файл табеля учёта рабочего времени";
-                ofd.Filter = "Файлы Excel (*.xlsx)|*.xlsx|Все файлы (*.*)|*.*";
+                ofd.Title = "Выберите файл табеля учёта рабочего времени";
+                ofd.Filter = "Табель Excel (*.xlsx)|*.xlsx";
 
                 if (ofd.ShowDialog() != DialogResult.OK)
                     return false;
@@ -926,25 +1075,17 @@ namespace PayrollClient
                 try
                 {
                     ExcelParseResult parsed = ExcelTimesheetService.ParseTimesheetFile(ofd.FileName, month, year);
-                    if (parsed.Entries.Count == 0)
-                    {
-                        MessageBox.Show("В выбранном файле не найдено строк с сотрудниками.",
-                            "Пустой табель", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return false;
-                    }
 
                     int fileMonth = parsed.DetectedMonth ?? month;
                     int fileYear = parsed.DetectedYear ?? year;
                     if (!parsed.IsIndividualPlan && (fileMonth != month || fileYear != year))
                     {
                         DialogResult choice = MessageBox.Show(
-                            $"В файле табеля указан период: {_months[fileMonth - 1]} {fileYear} г.\n" +
-                            $"Текущий выбранный период: {_months[month - 1]} {year} г.\n\n" +
+                            $"В файле табеля определён период: {_months[fileMonth - 1]} {fileYear} г.\n" +
+                            $"Сейчас выбран период: {_months[month - 1]} {year} г.\n\n" +
                             $"Загрузить табель за {_months[fileMonth - 1]} {fileYear} г.?\n" +
-                            $"• «Да» — загрузить за {_months[fileMonth - 1]} {fileYear} г.\n" +
-                            $"• «Нет» — загрузить за {_months[month - 1]} {year} г.\n" +
-                            "• «Отмена» — отменить импорт",
-                            "Выбор периода импорта",
+                            $"«Да» — за {_months[fileMonth - 1]} {fileYear} г., «Нет» — за {_months[month - 1]} {year} г.",
+                            "Выбор расчётного периода",
                             MessageBoxButtons.YesNoCancel,
                             MessageBoxIcon.Question);
 
@@ -982,6 +1123,12 @@ namespace PayrollClient
                     _selectedYear = year;
                     _payrollCache = null;
 
+                    int totalSick = parsed.Entries.Sum(x => x.SickDays);
+                    int totalVac = parsed.Entries.Sum(x => x.VacationDays);
+                    string absenceNote = (totalSick > 0 || totalVac > 0)
+                        ? $"\nУчтены неявки: больничный (Б) — {totalSick} дн., отпуск (О) — {totalVac} дн."
+                        : string.Empty;
+
                     string extra = !string.IsNullOrEmpty(parsed.InfoMessage) ? parsed.InfoMessage + "\n\n" : string.Empty;
                     string tip = (importResult.SavedCount == 0 && importResult.UnmatchedNames != null && importResult.UnmatchedNames.Count > 0)
                         ? "\n\nПроверьте совпадение ФИО в Excel-файле со списком во вкладке «Сотрудники»."
@@ -989,7 +1136,7 @@ namespace PayrollClient
 
                     MessageBox.Show(
                         $"{extra}Период: {_months[month - 1]} {year} г. (лист «{parsed.SheetName}»)\n" +
-                        importResult.Message + tip,
+                        importResult.Message + absenceNote + tip,
                         "Импорт табеля завершён",
                         MessageBoxButtons.OK,
                         importResult.SavedCount > 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
@@ -1006,7 +1153,7 @@ namespace PayrollClient
         }
 
         // =========================================================================
-        // 4. ЭКРАН «РАСЧЕТ ЗАРПЛАТЫ»
+        // 4. ЭКРАН «РАСЧЕТ ЗАРПЛАТЫ» (2 ПОЛОВИНЫ МЕСЯЦА, Б/О, ЛЬГОТЫ, СУММА СТАВОК)
         // =========================================================================
         private void LoadPayrollScreen()
         {
@@ -1015,116 +1162,262 @@ namespace PayrollClient
             UiTheme.CreatePageHeader(
                 _contentPanel,
                 "Расчёт заработной платы",
-                "Начисление оклада, надбавок и обязательных удержаний на основании данных табеля");
+                "Расчёт по двум половинам месяца (аванс и окончательная выплата) с учётом совместительства, Б/О и налоговых льгот");
 
             Panel toolbar = CreateToolbarCard();
 
             ComboBox cmbMonth;
             NumericUpDown nudYear;
-            AddPeriodSelectors(toolbar, out cmbMonth, out nudYear);
+            AddPeriodSelectors(toolbar, out cmbMonth, out nudYear, compact: true);
 
-            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 322, 8, 132);
-            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 462, 8, 145);
-            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 615, 8, 145);
-            Button btnExport = UiTheme.CreateOutlineButton("Экспорт в Excel", 768, 8, 145);
+            // Выбор этапа выплаты: 1-я половина (середина месяца) или итог месяца (1-я + 2-я половина)
+            ComboBox cmbHalf = new ComboBox
+            {
+                Location = new Point(276, 12),
+                Size = new Size(202, 28),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = UiTheme.TextPrimary
+            };
+            cmbHalf.Items.Add("1-я половина (аванс)");
+            cmbHalf.Items.Add("Весь месяц (1-я + 2-я пол.)");
+            cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : 1;
+            toolbar.Controls.Add(cmbHalf);
+
+            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 488, 8, 112);
+            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 606, 8, 128);
+            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 740, 8, 128);
+            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 874, 8, 102);
 
             btnSave.Enabled = false;
             btnExport.Enabled = false;
 
-            toolbar.Controls.Add(btnCalculate);
-            toolbar.Controls.Add(btnImportTs);
-            toolbar.Controls.Add(btnSave);
-            toolbar.Controls.Add(btnExport);
+            toolbar.Controls.AddRange(new Control[] { btnCalculate, btnImportTs, btnSave, btnExport });
 
             Label lblTotals;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblTotals);
-            lblTotals.Text = $"Период: {_months[_selectedMonth - 1]} {_selectedYear} г.   |   Нажмите «Рассчитать» или «Импорт табеля» для расчёта выплат.";
+            lblTotals.Text = $"Период: {_months[_selectedMonth - 1]} {_selectedYear} г.  |  Выберите этап выплаты и нажмите «Рассчитать».";
 
             int gridTop = 140;
             int gridHeight = footer.Top - gridTop - 12;
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+            dgv.ShowCellToolTips = true;
+            dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8.75f, FontStyle.Bold);
+            dgv.DefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
 
-            string[] textCols = { "EmployeeID", "ФИО", "Дни", "Часы" };
+            var headerTooltips = new Dictionary<string, string>
+            {
+                { "Ставка", "Суммарная ставка сотрудника (основное место + внутреннее совместительство)" },
+                { "Дни, дн.", "Фактически отработанные дни / плановая норма дней" },
+                { "Часы, ч.", "Фактически отработанные часы / норма часов (суммарно по всем ставкам)" },
+                { "Б / О, дн.", "Количество дней больничного (Б) / оплачиваемого отпуска (О)" },
+                { "Оклад, руб.", "Начисленный оклад за фактически отработанное время, руб." },
+                { "Надбавка, руб.", "Надбавка за стаж работы в бюджетной организации, руб." },
+                { "Б/О, руб.", "Начисления по больничному листу (Б) и отпускные (О), руб." },
+                { "Вычет, руб.", "Применённый стандартный налоговый вычет (льготы по ст. 209 НК РБ), руб." },
+                { "НДФЛ, руб.", "Подоходный налог 13% с учётом налоговых льгот, руб." },
+                { "ФСЗН, руб.", "Обязательный страховой взнос в ФСЗН (1%), руб." },
+                { "Профс., руб.", "Профсоюзный взнос (1%), руб." },
+                { "1-я пол., руб.", "Выплата за 1-ю половину месяца (аванс в середине месяца), руб." },
+                { "2-я пол., руб.", "Выплата за 2-ю половину месяца (окончательный расчёт в конце месяца), руб." },
+                { "К выплате, руб.", "Итоговая чистая зарплата за месяц (1-я половина + 2-я половина), руб." }
+            };
 
-            Action<DataTable> applyTableFormatting = (DataTable dt) =>
+            string[] centerCols =
+            {
+                "Ставка", "Дни, дн.", "Часы, ч.", "Б / О, дн.",
+                "Дни (1-я пол.), дн.", "Часы (1-я пол.), ч.", "Этап выплаты"
+            };
+
+            Action<DataTable, int> applyTableFormatting = (DataTable dt, int mode) =>
             {
                 dgv.DataSource = dt;
                 if (dgv.Columns["EmployeeID"] != null) dgv.Columns["EmployeeID"].Visible = false;
 
                 foreach (DataGridViewColumn col in dgv.Columns)
                 {
-                    if (!textCols.Contains(col.Name))
+                    string tip;
+                    if (headerTooltips.TryGetValue(col.Name, out tip))
+                        col.ToolTipText = tip;
+
+                    if (col.Name == "ФИО")
                     {
-                        bool isRate = col.Name == "Ставка";
-                        col.DefaultCellStyle.Format = isRate ? "0.##" : "N2";
-                        col.DefaultCellStyle.Alignment = isRate
-                            ? DataGridViewContentAlignment.MiddleCenter
-                            : DataGridViewContentAlignment.MiddleRight;
-                        col.HeaderCell.Style.Alignment = isRate
-                            ? DataGridViewContentAlignment.MiddleCenter
-                            : DataGridViewContentAlignment.MiddleRight;
+                        col.FillWeight = mode == 1 ? 180 : 155;
+                    }
+                    else if (centerCols.Contains(col.Name))
+                    {
+                        col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                        col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                        if (col.Name == "Ставка")
+                        {
+                            col.DefaultCellStyle.Format = "0.##";
+                            col.FillWeight = 52;
+                        }
+                        else if (col.Name == "Часы (1-я пол.), ч.")
+                        {
+                            col.DefaultCellStyle.Format = "0.#";
+                            col.FillWeight = 90;
+                        }
+                        else if (col.Name == "Этап выплаты")
+                        {
+                            col.FillWeight = 135;
+                        }
+                        else
+                        {
+                            col.FillWeight = col.Name == "Часы, ч." ? 78 : 62;
+                        }
+                    }
+                    else
+                    {
+                        col.DefaultCellStyle.Format = "N2";
+                        col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                        col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
+                        col.FillWeight = 76;
                     }
                 }
 
-                if (dgv.Columns["ФИО"] != null) dgv.Columns["ФИО"].FillWeight = 160;
-                if (dgv.Columns["Ставка"] != null) dgv.Columns["Ставка"].FillWeight = 50;
-                if (dgv.Columns["Дни"] != null)
+                string mainNetCol = mode == 1 ? "Аванс (1-я пол.), руб." : "К выплате, руб.";
+                if (dgv.Columns[mainNetCol] != null)
                 {
-                    dgv.Columns["Дни"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                    dgv.Columns["Дни"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                    dgv.Columns["Дни"].FillWeight = 62;
-                }
-                if (dgv.Columns["Часы"] != null)
-                {
-                    dgv.Columns["Часы"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                    dgv.Columns["Часы"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                    dgv.Columns["Часы"].FillWeight = 82;
-                }
-                if (dgv.Columns["К выплате"] != null)
-                {
-                    dgv.Columns["К выплате"].DefaultCellStyle.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
-                    dgv.Columns["К выплате"].DefaultCellStyle.ForeColor = UiTheme.PrimaryGreen;
-                    dgv.Columns["К выплате"].DefaultCellStyle.SelectionForeColor = UiTheme.PrimaryGreen;
+                    dgv.Columns[mainNetCol].FillWeight = mode == 1 ? 115 : 88;
+                    dgv.Columns[mainNetCol].DefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+                    dgv.Columns[mainNetCol].DefaultCellStyle.ForeColor = UiTheme.PrimaryGreen;
+                    dgv.Columns[mainNetCol].DefaultCellStyle.SelectionForeColor = UiTheme.PrimaryGreen;
                 }
 
-                decimal sumGross = 0m;
-                decimal sumDeductions = 0m;
-                decimal sumNet = 0m;
-                foreach (DataRow row in dt.Rows)
+                if (mode == 1)
                 {
-                    decimal b = dt.Columns.Contains("Оклад") ? Convert.ToDecimal(row["Оклад"]) : 0m;
-                    decimal bon = dt.Columns.Contains("Надбавка") ? Convert.ToDecimal(row["Надбавка"]) : 0m;
-                    decimal net = dt.Columns.Contains("К выплате") ? Convert.ToDecimal(row["К выплате"]) : 0m;
-                    sumGross += b + bon;
-                    sumNet += net;
-                    sumDeductions += (b + bon) - net;
+                    decimal sumAdv = 0m;
+                    foreach (DataRow row in dt.Rows)
+                        sumAdv += Convert.ToDecimal(row["Аванс (1-я пол.), руб."]);
+
+                    lblTotals.Text =
+                        $"Сотрудников: {dt.Rows.Count}  |  " +
+                        $"Этап: 1-я половина месяца (середина месяца)  |  " +
+                        $"Итого аванс к выплате: {sumAdv:N2} руб.  |  " +
+                        "Окончательный расчёт и удержания — в конце месяца";
+
+                    // В БД фиксируется итоговая месячная ведомость, а выгрузить в Excel можно обе
+                    btnSave.Enabled = false;
+                    btnExport.Enabled = dt.Rows.Count > 0;
                 }
+                else
+                {
+                    decimal sumGross = 0m;
+                    decimal sumDed = 0m;
+                    decimal sumHalf1 = 0m;
+                    decimal sumHalf2 = 0m;
+                    decimal sumNet = 0m;
 
-                lblTotals.Text =
-                    $"Сотрудников: {dt.Rows.Count}   |   " +
-                    $"Начислено: {sumGross:N2} руб.   |   " +
-                    $"Удержано: {sumDeductions:N2} руб.   |   " +
-                    $"Итого к выплате: {sumNet:N2} руб.";
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        decimal b = Convert.ToDecimal(row["Оклад, руб."]);
+                        decimal bon = Convert.ToDecimal(row["Надбавка, руб."]);
+                        decimal bo = dt.Columns.Contains("Б/О, руб.") ? Convert.ToDecimal(row["Б/О, руб."]) : 0m;
+                        decimal h1 = dt.Columns.Contains("1-я пол., руб.") ? Convert.ToDecimal(row["1-я пол., руб."]) : 0m;
+                        decimal h2 = dt.Columns.Contains("2-я пол., руб.") ? Convert.ToDecimal(row["2-я пол., руб."]) : 0m;
+                        decimal net = Convert.ToDecimal(row["К выплате, руб."]);
 
-                btnSave.Enabled = dt.Rows.Count > 0;
-                btnExport.Enabled = dt.Rows.Count > 0;
+                        decimal g = b + bon + bo;
+                        sumGross += g;
+                        sumDed += (g - net);
+                        sumHalf1 += h1;
+                        sumHalf2 += h2;
+                        sumNet += net;
+                    }
+
+                    lblTotals.Text =
+                        $"Сотрудников: {dt.Rows.Count}  |  " +
+                        $"Начислено: {sumGross:N2} р.  |  " +
+                        $"Удержано: {sumDed:N2} р.  |  " +
+                        $"1-я пол.: {sumHalf1:N2} р.  |  " +
+                        $"2-я пол.: {sumHalf2:N2} р.  |  " +
+                        $"Итого к выплате: {sumNet:N2} р.";
+
+                    btnSave.Enabled = dt.Rows.Count > 0;
+                    btnExport.Enabled = dt.Rows.Count > 0;
+                }
             };
 
-            Action executeCalculation = () =>
+            bool suppressEvents = false;
+
+            Action<bool> executeCalculation = (bool fromImport) =>
             {
+                int m = cmbMonth.SelectedIndex + 1;
+                int y = (int)nudYear.Value;
+                int mode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
+
+                // Проверка календарной даты (нельзя считать будущий месяц или весь месяц 1-го числа)
+                DateTime today = DateTime.Today;
+                DateTime periodFirst = new DateTime(y, m, 1);
+                DateTime currentFirst = new DateTime(today.Year, today.Month, 1);
+
+                if (periodFirst > currentFirst)
+                {
+                    MessageBox.Show(
+                        $"Месяц «{_months[m - 1]} {y} г.» ещё не наступил (сегодня {today:dd.MM.yyyy}).\n" +
+                        "Расчёт заработной платы за будущий период невозможен.",
+                        "Период ещё не наступил",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (y == today.Year && m == today.Month)
+                {
+                    if (today.Day < 15 && !fromImport)
+                    {
+                        MessageBox.Show(
+                            $"Сегодня {today:dd.MM.yyyy} — первая половина месяца «{_months[m - 1]}» ещё не завершена.\n\n" +
+                            "Зарплата рассчитывается и выплачивается в два этапа:\n" +
+                            "• 1-я половина (аванс) — в середине месяца (с 15-го числа);\n" +
+                            "• 2-я половина (окончательный расчёт) — в конце месяца (с 25-го числа).",
+                            "Рано выполнять расчёт",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    if (today.Day < 25 && mode == 2 && !fromImport)
+                    {
+                        DialogResult ans = MessageBox.Show(
+                            $"Месяц «{_months[m - 1]} {y} г.» ещё не завершён (сегодня {today:dd.MM.yyyy}).\n" +
+                            "В середине месяца выплачивается 1-я половина (аванс), а окончательный расчёт за 2-ю половину выполняется с 25-го числа.\n\n" +
+                            "• Нажмите «Да», чтобы рассчитать 1-ю половину (аванс);\n" +
+                            "• Нажмите «Нет», чтобы выполнить предварительный расчёт за весь месяц по текущему табелю;\n" +
+                            "• Нажмите «Отмена» для отмены.",
+                            "Выбор этапа расчёта",
+                            MessageBoxButtons.YesNoCancel,
+                            MessageBoxIcon.Question);
+
+                        if (ans == DialogResult.Cancel) return;
+                        if (ans == DialogResult.Yes)
+                        {
+                            suppressEvents = true;
+                            cmbHalf.SelectedIndex = 0;
+                            suppressEvents = false;
+                            mode = 1;
+                        }
+                    }
+                }
+
                 try
                 {
                     btnCalculate.Text = "Расчёт...";
                     btnCalculate.Enabled = false;
 
-                    int m = cmbMonth.SelectedIndex + 1;
-                    int y = (int)nudYear.Value;
                     _selectedMonth = m;
                     _selectedYear = y;
+                    _selectedHalfMode = mode;
 
-                    var request = new NetworkMessage { Command = "CALCULATE_PAYROLL", Data = $"{m}|{y}" };
+                    var request = new NetworkMessage
+                    {
+                        Command = "CALCULATE_PAYROLL",
+                        Data = $"{m}|{y}|{mode}"
+                    };
                     var response = new ServerConnection().SendRequest(request);
 
                     if (response.IsSuccess)
@@ -1133,42 +1426,52 @@ namespace PayrollClient
                         _payrollCache = dt;
                         _payrollCacheMonth = m;
                         _payrollCacheYear = y;
-                        applyTableFormatting(dt);
+                        _payrollCacheHalfMode = mode;
+                        applyTableFormatting(dt, mode);
                     }
                     else
                     {
-                        MessageBox.Show("Ошибка расчёта: " + response.ErrorMessage, "Ошибка",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(response.ErrorMessage, "Ошибка расчёта",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                 }
                 catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
                 finally { btnCalculate.Text = "Рассчитать"; btnCalculate.Enabled = true; }
             };
 
-            Action onPeriodChanged = () =>
+            Action onSelectorsChanged = () =>
             {
                 _selectedMonth = cmbMonth.SelectedIndex + 1;
                 _selectedYear = (int)nudYear.Value;
-                if (_payrollCache != null && _payrollCacheMonth == _selectedMonth && _payrollCacheYear == _selectedYear)
+                _selectedHalfMode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
+
+                if (_payrollCache != null
+                    && _payrollCacheMonth == _selectedMonth
+                    && _payrollCacheYear == _selectedYear
+                    && _payrollCacheHalfMode == _selectedHalfMode)
                 {
-                    applyTableFormatting(_payrollCache);
+                    applyTableFormatting(_payrollCache, _selectedHalfMode);
                 }
                 else
                 {
                     dgv.DataSource = null;
                     btnSave.Enabled = false;
                     btnExport.Enabled = false;
-                    lblTotals.Text = $"Период: {_months[_selectedMonth - 1]} {_selectedYear} г.   |   Нажмите «Рассчитать» или «Импорт табеля».";
+                    string modeLabel = _selectedHalfMode == 1 ? "1-я половина (аванс)" : "Весь месяц (1-я + 2-я пол.)";
+                    lblTotals.Text = $"Период: {_months[_selectedMonth - 1]} {_selectedYear} г. ({modeLabel})  |  Нажмите «Рассчитать».";
                 }
             };
 
-            bool suppressPeriodEvents = false;
-            cmbMonth.SelectedIndexChanged += (s, e) => { if (!suppressPeriodEvents) onPeriodChanged(); };
-            nudYear.ValueChanged += (s, e) => { if (!suppressPeriodEvents) onPeriodChanged(); };
+            cmbMonth.SelectedIndexChanged += (s, e) => { if (!suppressEvents) onSelectorsChanged(); };
+            nudYear.ValueChanged += (s, e) => { if (!suppressEvents) onSelectorsChanged(); };
+            cmbHalf.SelectedIndexChanged += (s, e) => { if (!suppressEvents) onSelectorsChanged(); };
 
-            if (_payrollCache != null && _payrollCacheMonth == _selectedMonth && _payrollCacheYear == _selectedYear)
+            if (_payrollCache != null
+                && _payrollCacheMonth == _selectedMonth
+                && _payrollCacheYear == _selectedYear
+                && _payrollCacheHalfMode == _selectedHalfMode)
             {
-                applyTableFormatting(_payrollCache);
+                applyTableFormatting(_payrollCache, _selectedHalfMode);
             }
 
             btnImportTs.Click += (s, e) =>
@@ -1177,15 +1480,21 @@ namespace PayrollClient
                 int y = (int)nudYear.Value;
                 if (RunExcelTimesheetImport(ref m, ref y))
                 {
-                    suppressPeriodEvents = true;
+                    suppressEvents = true;
                     cmbMonth.SelectedIndex = m - 1;
                     if (y >= (int)nudYear.Minimum && y <= (int)nudYear.Maximum) nudYear.Value = y;
-                    suppressPeriodEvents = false;
-                    executeCalculation();
+                    cmbHalf.SelectedIndex = 1; // После импорта полного табеля показываем расчёт с обеими половинами
+                    suppressEvents = false;
+
+                    // Если импортирован табель за уже наступивший месяц — сразу рассчитываем
+                    if (new DateTime(y, m, 1) <= new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1))
+                        executeCalculation(true);
+                    else
+                        onSelectorsChanged();
                 }
             };
 
-            btnCalculate.Click += (s, e) => executeCalculation();
+            btnCalculate.Click += (s, e) => executeCalculation(false);
 
             btnSave.Click += (s, e) =>
             {
@@ -1204,8 +1513,10 @@ namespace PayrollClient
                     };
                     var response = new ServerConnection().SendRequest(request);
 
-                    if (response.IsSuccess) MessageBox.Show(response.Data, "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    else MessageBox.Show("Ошибка: " + response.ErrorMessage, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    if (response.IsSuccess)
+                        MessageBox.Show(response.Data, "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    else
+                        MessageBox.Show("Ошибка: " + response.ErrorMessage, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
             };
@@ -1213,11 +1524,13 @@ namespace PayrollClient
             btnExport.Click += (s, e) =>
             {
                 int y = (int)nudYear.Value;
+                int mode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
+                string prefix = mode == 1 ? "Аванс" : "Ведомость";
 
                 using (var sfd = new SaveFileDialog())
                 {
                     sfd.Filter = "Excel Workbook (*.xlsx)|*.xlsx";
-                    sfd.FileName = $"Ведомость_{cmbMonth.Text}_{y}.xlsx";
+                    sfd.FileName = $"{prefix}_{cmbMonth.Text}_{y}.xlsx";
 
                     if (sfd.ShowDialog() == DialogResult.OK)
                     {
@@ -1231,7 +1544,8 @@ namespace PayrollClient
 
                             using (var workbook = new XLWorkbook())
                             {
-                                IXLWorksheet worksheet = workbook.Worksheets.Add(exportDt, "Расчет");
+                                string sheetTitle = mode == 1 ? "Аванс (1-я пол.)" : "Расчёт зарплаты";
+                                IXLWorksheet worksheet = workbook.Worksheets.Add(exportDt, sheetTitle);
                                 IXLRange headerRange = worksheet.Range(1, 1, 1, exportDt.Columns.Count);
                                 headerRange.Style.Font.Bold = true;
                                 headerRange.Style.Font.FontColor = XLColor.White;
@@ -1241,10 +1555,10 @@ namespace PayrollClient
                                 worksheet.Cell(totalRow, 1).Value = "ИТОГО:";
                                 worksheet.Cell(totalRow, 1).Style.Font.Bold = true;
 
-                                string[] moneyCols = { "Оклад", "Надбавка", "НДФЛ (13%)", "ФСЗН (1%)", "Профсоюз (1%)", "К выплате" };
                                 for (int c = 0; c < exportDt.Columns.Count; c++)
                                 {
-                                    if (moneyCols.Contains(exportDt.Columns[c].ColumnName))
+                                    string colName = exportDt.Columns[c].ColumnName;
+                                    if (colName.EndsWith("руб."))
                                     {
                                         decimal colSum = 0m;
                                         foreach (DataRow r in exportDt.Rows)
@@ -1261,6 +1575,7 @@ namespace PayrollClient
                                 worksheet.Columns().AdjustToContents();
                                 workbook.SaveAs(sfd.FileName);
                             }
+
                             MessageBox.Show("Excel-ведомость успешно сохранена!", "Успех",
                                 MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
@@ -1271,7 +1586,7 @@ namespace PayrollClient
         }
 
         // =========================================================================
-        // 5. ЭКРАН «ГРАФИКИ» (4 АНАЛИТИЧЕСКИХ ГРАФИКА В СТИЛЕ ПОЛЕСГУ + ИТОГИ ВНИЗУ)
+        // 5. ЭКРАН «ГРАФИКИ» (СПОКОЙНЫЕ ОТТЕНКИ, ОБЕ ПОДПИСИ ФОТ, ПЕЧАТЬ ОТЧЁТА)
         // =========================================================================
         private void LoadChartsScreen()
         {
@@ -1280,7 +1595,7 @@ namespace PayrollClient
             UiTheme.CreatePageHeader(
                 _contentPanel,
                 "Графики и аналитика",
-                "Визуализация фонда оплаты труда, структуры удержаний, годовой динамики и отработки часов");
+                "Фонд оплаты труда по кафедрам, структура удержаний, годовая динамика и отработка часов");
 
             Panel toolbar = CreateToolbarCard();
 
@@ -1289,7 +1604,9 @@ namespace PayrollClient
             AddPeriodSelectors(toolbar, out cmbMonths, out nudYear);
 
             Button btnRefresh = UiTheme.CreatePrimaryButton("Обновить графики", 322, 8, 160);
+            Button btnPrint = UiTheme.CreateOutlineButton("Печать графиков", 492, 8, 158);
             toolbar.Controls.Add(btnRefresh);
+            toolbar.Controls.Add(btnPrint);
 
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
@@ -1298,7 +1615,6 @@ namespace PayrollClient
             int gridHeight = footer.Top - gridTop - 8;
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2) + 12;
 
-            // Адаптивная сетка 2x2 на 4 карточки с графиками
             TableLayoutPanel chartsGrid = new TableLayoutPanel
             {
                 Location = new Point(ContentMargin - 6, gridTop),
@@ -1315,11 +1631,16 @@ namespace PayrollClient
             chartsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
             _contentPanel.Controls.Add(chartsGrid);
 
+            string title1 = "1. Фонд оплаты труда по кафедрам, руб.";
+            string title2 = "2. Структура фонда оплаты труда";
+            string title3 = "3. Динамика фонда зарплаты за год, руб.";
+            string title4 = "4. Отработка часов (Факт / Норма), ч.";
+
             Label lblSub1, lblSub2, lblSub3, lblSub4;
-            Chart chartDept = UiTheme.CreateChartCard(chartsGrid, "1. Фонд оплаты труда по кафедрам", out lblSub1);
-            Chart chartStructure = UiTheme.CreateChartCard(chartsGrid, "2. Структура фонда оплаты труда", out lblSub2);
-            Chart chartTrend = UiTheme.CreateChartCard(chartsGrid, "3. Динамика фонда зарплаты за год", out lblSub3);
-            Chart chartHours = UiTheme.CreateChartCard(chartsGrid, "4. Отработка часов (Факт / Норма)", out lblSub4);
+            Chart chartDept = UiTheme.CreateChartCard(chartsGrid, title1, out lblSub1);
+            Chart chartStructure = UiTheme.CreateChartCard(chartsGrid, title2, out lblSub2);
+            Chart chartTrend = UiTheme.CreateChartCard(chartsGrid, title3, out lblSub3);
+            Chart chartHours = UiTheme.CreateChartCard(chartsGrid, title4, out lblSub4);
 
             chartsGrid.SetCellPosition(chartDept.Parent, new TableLayoutPanelCellPosition(0, 0));
             chartsGrid.SetCellPosition(chartStructure.Parent, new TableLayoutPanelCellPosition(1, 0));
@@ -1358,8 +1679,7 @@ namespace PayrollClient
                     RenderMonthlyTrendChart(chartTrend, data.MonthlyTrend, m);
                     RenderEmployeeHoursChart(chartHours, data.EmployeeHours);
 
-                    // Нижняя сводная строка вкладки «Графики»
-                    decimal totalGross = data.TotalBaseSalary + data.TotalBonus;
+                    decimal totalGross = data.TotalBaseSalary + data.TotalBonus + data.TotalSickVacationPay;
                     decimal totalDed = data.TotalTax + data.TotalFszen + data.TotalUnion;
                     decimal totalNet = data.TotalNetSalary;
 
@@ -1389,9 +1709,9 @@ namespace PayrollClient
                             }
                         }
                         lblFooter.Text =
-                            $"Период: {periodLabel}   |   " +
-                            $"Сотрудников: {empCnt}   |   " +
-                            $"Часы по табелю: {sumH:0.#} / {sumNH:0.#} ч.   |   " +
+                            $"Период: {periodLabel}  |  " +
+                            $"Сотрудников: {empCnt}  |  " +
+                            $"Часы по табелю: {sumH:0.#}/{sumNH:0.#} ч.  |  " +
                             "Расчёт зарплаты за этот месяц ещё не сохранён в БД";
                     }
                 }
@@ -1401,6 +1721,17 @@ namespace PayrollClient
                 }
             };
 
+            btnPrint.Click += (s, e) =>
+            {
+                string period = $"{_months[_selectedMonth - 1]} {_selectedYear} г.";
+                PrintChartsReport(
+                    period,
+                    lblFooter.Text,
+                    new[] { chartDept, chartStructure, chartTrend, chartHours },
+                    new[] { title1, title2, title3, title4 },
+                    new[] { lblSub1.Text, lblSub2.Text, lblSub3.Text, lblSub4.Text });
+            };
+
             cmbMonths.SelectedIndexChanged += (s, e) => updateCharts();
             nudYear.ValueChanged += (s, e) => updateCharts();
             btnRefresh.Click += (s, e) => updateCharts();
@@ -1408,7 +1739,137 @@ namespace PayrollClient
             updateCharts();
         }
 
-        // График 1: Горизонтальная диаграмма ФОТ по кафедрам (Начислено и К выплате)
+        // Печать всех 4 графиков как единого аналитического отчёта (альбомный лист A4 / экспорт в PDF)
+        private void PrintChartsReport(
+            string periodLabel,
+            string summaryLine,
+            Chart[] charts,
+            string[] titles,
+            string[] subtitles)
+        {
+            try
+            {
+                using (PrintDocument doc = new PrintDocument())
+                {
+                    doc.DocumentName = $"Графики_ФОТ_ПолесГУ_{periodLabel}";
+                    doc.DefaultPageSettings.Landscape = true;
+                    doc.DefaultPageSettings.Margins = new Margins(36, 36, 32, 32);
+
+                    doc.PrintPage += (s, e) =>
+                    {
+                        Graphics g = e.Graphics;
+                        Rectangle bounds = e.MarginBounds;
+
+                        using (Font orgFont = new Font("Segoe UI", 9f, FontStyle.Regular))
+                        using (Font reportTitleFont = new Font("Segoe UI", 13.5f, FontStyle.Bold))
+                        using (Font metaFont = new Font("Segoe UI", 8.75f, FontStyle.Regular))
+                        using (Font cardTitleFont = new Font("Segoe UI", 9.25f, FontStyle.Bold))
+                        using (Font cardSubFont = new Font("Segoe UI", 8f, FontStyle.Regular))
+                        using (Font footerFont = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+                        using (Brush primaryBrush = new SolidBrush(UiTheme.TextPrimary))
+                        using (Brush mutedBrush = new SolidBrush(UiTheme.TextSecondary))
+                        using (Brush accentBrush = new SolidBrush(UiTheme.ChartPrimary))
+                        using (Brush footerBg = new SolidBrush(Color.FromArgb(244, 248, 245)))
+                        using (Pen borderPen = new Pen(UiTheme.BorderColor, 1f))
+                        using (Pen accentPen = new Pen(UiTheme.ChartPrimary, 2f))
+                        {
+                            // 1. Шапка печатного отчёта
+                            g.DrawString("Учреждение образования «Полесский государственный университет»",
+                                orgFont, mutedBrush, bounds.Left, bounds.Top);
+                            g.DrawString("АНАЛИТИЧЕСКИЙ ОТЧЁТ ПО ГРАФИКАМ ФОНДА ОПЛАТЫ ТРУДА",
+                                reportTitleFont, accentBrush, bounds.Left, bounds.Top + 17);
+
+                            string metaRight = $"Период: {periodLabel}\nДата печати: {DateTime.Now:dd.MM.yyyy HH:mm}";
+                            StringFormat rightFmt = new StringFormat { Alignment = StringAlignment.Far };
+                            g.DrawString(metaRight, metaFont, mutedBrush,
+                                new RectangleF(bounds.Right - 260, bounds.Top + 2, 260, 38), rightFmt);
+
+                            int lineY = bounds.Top + 48;
+                            g.DrawLine(accentPen, bounds.Left, lineY, bounds.Right, lineY);
+
+                            // 2. Сетка 2x2 из 4 графиков
+                            int footerAreaHeight = 62;
+                            int gridTop = lineY + 10;
+                            int gridHeight = bounds.Bottom - footerAreaHeight - gridTop;
+                            int gap = 12;
+                            int cellW = (bounds.Width - gap) / 2;
+                            int cellH = (gridHeight - gap) / 2;
+
+                            StringFormat centerFmt = new StringFormat
+                            {
+                                Alignment = StringAlignment.Center,
+                                LineAlignment = StringAlignment.Center
+                            };
+
+                            for (int i = 0; i < 4; i++)
+                            {
+                                int col = i % 2;
+                                int row = i / 2;
+                                int cx = bounds.Left + col * (cellW + gap);
+                                int cy = gridTop + row * (cellH + gap);
+
+                                Rectangle cardRect = new Rectangle(cx, cy, cellW, cellH);
+                                g.FillRectangle(Brushes.White, cardRect);
+                                g.DrawRectangle(borderPen, cardRect);
+                                g.FillRectangle(accentBrush, cx, cy, cellW, 3);
+
+                                g.DrawString(titles[i], cardTitleFont, primaryBrush, cx + 10, cy + 7);
+                                if (!string.IsNullOrEmpty(subtitles[i]))
+                                {
+                                    g.DrawString(subtitles[i], cardSubFont, mutedBrush,
+                                        new RectangleF(cx + cellW - 150, cy + 8, 140, 18), rightFmt);
+                                }
+
+                                Rectangle chartRect = new Rectangle(cx + 6, cy + 28, cellW - 12, cellH - 34);
+                                if (charts[i].Series.Count > 0 && charts[i].ChartAreas[0].Visible)
+                                {
+                                    charts[i].Printing.PrintPaint(g, chartRect);
+                                }
+                                else
+                                {
+                                    g.DrawString("Нет сохранённых данных за выбранный период",
+                                        metaFont, mutedBrush, chartRect, centerFmt);
+                                }
+                            }
+
+                            // 3. Нижняя сводка и строка подписи
+                            Rectangle sumRect = new Rectangle(bounds.Left, bounds.Bottom - 52, bounds.Width, 28);
+                            g.FillRectangle(footerBg, sumRect);
+                            g.DrawRectangle(borderPen, sumRect);
+                            g.FillRectangle(accentBrush, sumRect.Left, sumRect.Top, 4, sumRect.Height);
+                            g.DrawString(summaryLine, footerFont, primaryBrush, sumRect.Left + 12, sumRect.Top + 6);
+
+                            g.DrawString("Ответственный (бухгалтер): _______________________ / _______________________ /",
+                                metaFont, mutedBrush, bounds.Left, bounds.Bottom - 17);
+
+                            rightFmt.Dispose();
+                            centerFmt.Dispose();
+                        }
+
+                        e.HasMorePages = false;
+                    };
+
+                    using (PrintPreviewDialog preview = new PrintPreviewDialog())
+                    {
+                        preview.Document = doc;
+                        preview.Text = $"Предварительный просмотр отчёта — {periodLabel}";
+                        preview.StartPosition = FormStartPosition.CenterParent;
+                        preview.Width = 1150;
+                        preview.Height = 760;
+                        preview.PrintPreviewControl.Zoom = 0.85;
+                        preview.ShowDialog(this);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "Не удалось подготовить отчёт к печати. Проверьте наличие принтера (например, Microsoft Print to PDF).\n" + ex.Message,
+                    "Ошибка печати", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // График 1: Горизонтальная диаграмма ФОТ по кафедрам (подписи сумм у ОБЕИХ полос!)
         private void RenderDepartmentChart(Chart chart, DataTable dt)
         {
             chart.Series.Clear();
@@ -1425,7 +1886,6 @@ namespace PayrollClient
             chart.Legends[0].Enabled = true;
             chart.Legends[0].Docking = Docking.Bottom;
 
-            // В горизонтальной диаграмме (Bar) ось X — категории (вертикально), ось Y — суммы (горизонтально)
             area.AxisX.MajorGrid.Enabled = false;
             area.AxisX.Interval = 1;
             area.AxisY.MajorGrid.Enabled = true;
@@ -1434,31 +1894,37 @@ namespace PayrollClient
             area.AxisY.Minimum = 0;
             area.AxisY.LabelStyle.Format = "N0";
 
+            // Включены подписи сумм и у верхней полосы («Начислено»), и у нижней («К выплате»)
             Series sGross = new Series("Начислено")
             {
                 ChartType = SeriesChartType.Bar,
-                Color = Color.FromArgb(178, 222, 195),
-                BorderColor = Color.FromArgb(124, 190, 150),
+                Color = UiTheme.ChartMutedBar,
+                BorderColor = UiTheme.ChartMutedBorder,
                 BorderWidth = 1,
-                IsValueShownAsLabel = false
+                IsValueShownAsLabel = true,
+                LabelFormat = "N0",
+                Font = new Font("Segoe UI", 8f, FontStyle.Regular),
+                LabelForeColor = UiTheme.TextSecondary
             };
-            sGross["PointWidth"] = "0.65";
+            sGross["PointWidth"] = "0.68";
+            sGross.SmartLabelStyle.Enabled = false;
 
             Series sNet = new Series("К выплате")
             {
                 ChartType = SeriesChartType.Bar,
-                Color = UiTheme.PrimaryGreen,
+                Color = UiTheme.ChartPrimary,
                 IsValueShownAsLabel = true,
                 LabelFormat = "N0",
                 Font = new Font("Segoe UI", 8f, FontStyle.Bold),
                 LabelForeColor = UiTheme.TextPrimary
             };
-            sNet["PointWidth"] = "0.65";
+            sNet["PointWidth"] = "0.68";
+            sNet.SmartLabelStyle.Enabled = false;
 
             double maxVal = 0.0;
             foreach (DataRow row in dt.Rows)
             {
-                string dept = row["Кафедра"].ToString();
+                string dept = UiTheme.FormatDepartmentName(row["Кафедра"].ToString());
                 string shortDept = dept.Length > 26 ? dept.Substring(0, 24) + "…" : dept;
                 double gross = Convert.ToDouble(row["Начислено"]);
                 double net = Convert.ToDouble(row["КВыплате"]);
@@ -1466,25 +1932,25 @@ namespace PayrollClient
                 if (gross > maxVal) maxVal = gross;
 
                 int i1 = sGross.Points.AddXY(shortDept, gross);
-                sGross.Points[i1].ToolTip = $"{dept}\nНачислено: {gross:N2} руб. (сотрудников: {cnt})";
+                sGross.Points[i1].ToolTip = $"Кафедра: {dept}\nНачислено: {gross:N2} руб. (сотрудников: {cnt})";
 
                 int i2 = sNet.Points.AddXY(shortDept, net);
-                sNet.Points[i2].ToolTip = $"{dept}\nК выплате: {net:N2} руб. (сотрудников: {cnt})";
+                sNet.Points[i2].ToolTip = $"Кафедра: {dept}\nК выплате: {net:N2} руб. (сотрудников: {cnt})";
             }
 
-            area.AxisY.Maximum = maxVal > 0 ? Math.Ceiling(maxVal * 1.22) : double.NaN;
-            chart.Series.Add(sGross);
+            area.AxisY.Maximum = maxVal > 0 ? Math.Ceiling(maxVal * 1.25) : double.NaN;
             chart.Series.Add(sNet);
+            chart.Series.Add(sGross);
         }
 
-        // График 2: Кольцевая диаграмма (Doughnut) структуры начислений и удержаний
+        // График 2: Кольцевая диаграмма (Doughnut) в мягких шалфейно-зелёных оттенках
         private void RenderStructureChart(Chart chart, AnalyticsDataDto data, Label lblSub)
         {
             chart.Series.Clear();
             chart.Titles.Clear();
             ChartArea area = chart.ChartAreas[0];
 
-            decimal gross = data.TotalBaseSalary + data.TotalBonus;
+            decimal gross = data.TotalBaseSalary + data.TotalBonus + data.TotalSickVacationPay;
             if (data.PaidEmployeesCount == 0 || gross <= 0m)
             {
                 lblSub.Text = "Нет данных";
@@ -1510,10 +1976,10 @@ namespace PayrollClient
 
             var slices = new[]
             {
-                new { Name = "К выплате", Amount = data.TotalNetSalary, Color = UiTheme.PrimaryGreen },
-                new { Name = "НДФЛ (13%)", Amount = data.TotalTax, Color = Color.FromArgb(62, 168, 108) },
-                new { Name = "ФСЗН (1%)", Amount = data.TotalFszen, Color = Color.FromArgb(132, 204, 160) },
-                new { Name = "Профсоюз (1%)", Amount = data.TotalUnion, Color = Color.FromArgb(190, 230, 205) }
+                new { Name = "К выплате", Amount = data.TotalNetSalary, Color = UiTheme.ChartPrimary },
+                new { Name = "НДФЛ (13%)", Amount = data.TotalTax, Color = UiTheme.ChartSecondary },
+                new { Name = "ФСЗН (1%)", Amount = data.TotalFszen, Color = UiTheme.ChartTertiary },
+                new { Name = "Профсоюз (1%)", Amount = data.TotalUnion, Color = UiTheme.ChartQuaternary }
             };
 
             foreach (var sl in slices)
@@ -1524,13 +1990,18 @@ namespace PayrollClient
                 DataPoint pt = s.Points[idx];
                 pt.Color = sl.Color;
                 pt.LegendText = $"{sl.Name}: {sl.Amount:N2} р. ({pct:0.#}%)";
-                pt.ToolTip = $"{sl.Name}\nСумма: {sl.Amount:N2} руб.\nДоля от начисленного: {pct:0.#}%";
+                string extraTip = string.Empty;
+                if (sl.Name == "К выплате" && data.TotalSickVacationPay > 0m)
+                    extraTip = $"\nВкл. выплаты по Б/О: {data.TotalSickVacationPay:N2} руб.";
+                else if (sl.Name == "НДФЛ (13%)" && data.TotalTaxDeduction > 0m)
+                    extraTip = $"\nУчтено налоговых льгот: {data.TotalTaxDeduction:N2} руб.";
+                pt.ToolTip = $"{sl.Name}\nСумма: {sl.Amount:N2} руб.\nДоля от начисленного: {pct:0.#}%{extraTip}";
             }
 
             chart.Series.Add(s);
         }
 
-        // График 3: Плавная годовая динамика фонда зарплаты по 12 месяцам (SplineArea + Spline)
+        // График 3: Плавная годовая динамика фонда зарплаты в спокойных тонах
         private void RenderMonthlyTrendChart(Chart chart, DataTable dt, int selectedMonth)
         {
             chart.Series.Clear();
@@ -1580,18 +2051,18 @@ namespace PayrollClient
             Series sArea = new Series("К выплате")
             {
                 ChartType = SeriesChartType.SplineArea,
-                Color = Color.FromArgb(52, 24, 119, 64),
-                BorderColor = UiTheme.PrimaryGreen,
-                BorderWidth = 3,
+                Color = UiTheme.ChartAreaFill,
+                BorderColor = UiTheme.ChartPrimary,
+                BorderWidth = 2,
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
-                LabelForeColor = UiTheme.PrimaryGreen
+                LabelForeColor = UiTheme.ChartPrimary
             };
             sArea["LineTension"] = "0.35";
 
             Series sGrossLine = new Series("Начислено")
             {
                 ChartType = SeriesChartType.Spline,
-                Color = Color.FromArgb(74, 176, 117),
+                Color = UiTheme.ChartSecondary,
                 BorderWidth = 2,
                 BorderDashStyle = ChartDashStyle.Dash
             };
@@ -1609,9 +2080,9 @@ namespace PayrollClient
                 if (hasData)
                 {
                     pNet.MarkerStyle = MarkerStyle.Circle;
-                    pNet.MarkerSize = isCurrent ? 9 : 7;
-                    pNet.MarkerColor = isCurrent ? UiTheme.PrimaryGreen : Color.White;
-                    pNet.MarkerBorderColor = UiTheme.PrimaryGreen;
+                    pNet.MarkerSize = isCurrent ? 8 : 6;
+                    pNet.MarkerColor = isCurrent ? UiTheme.ChartPrimary : Color.White;
+                    pNet.MarkerBorderColor = UiTheme.ChartPrimary;
                     pNet.MarkerBorderWidth = 2;
                     pNet.Label = n.ToString("N0");
                     pNet.ToolTip = $"{_months[i]}\nК выплате: {n:N2} руб.\nНачислено: {g:N2} руб.";
@@ -1622,7 +2093,7 @@ namespace PayrollClient
                 {
                     sGrossLine.Points[idxGross].MarkerStyle = MarkerStyle.Circle;
                     sGrossLine.Points[idxGross].MarkerSize = 5;
-                    sGrossLine.Points[idxGross].MarkerColor = Color.FromArgb(74, 176, 117);
+                    sGrossLine.Points[idxGross].MarkerColor = UiTheme.ChartSecondary;
                     sGrossLine.Points[idxGross].ToolTip = $"{_months[i]} — Начислено: {g:N2} руб.";
                 }
             }
@@ -1631,7 +2102,7 @@ namespace PayrollClient
             chart.Series.Add(sGrossLine);
         }
 
-        // График 4: Сгруппированная столбчатая диаграмма отработки часов (Факт / Норма) по сотрудникам
+        // График 4: Столбчатая диаграмма отработки часов (спокойные приглушённые оттенки)
         private void RenderEmployeeHoursChart(Chart chart, DataTable dt)
         {
             chart.Series.Clear();
@@ -1655,34 +2126,26 @@ namespace PayrollClient
             area.AxisY.Minimum = 0;
             area.AxisY.LabelStyle.Format = "0";
 
-            Series sNorm = new Series("Норма часов")
+            Series sNorm = new Series("Норма, ч.")
             {
                 ChartType = SeriesChartType.Column,
-                Color = Color.FromArgb(206, 235, 217),
-                BorderColor = Color.FromArgb(142, 199, 164),
+                Color = UiTheme.ChartMutedBar,
+                BorderColor = UiTheme.ChartMutedBorder,
                 BorderWidth = 1,
                 IsValueShownAsLabel = false
             };
             sNorm["PointWidth"] = "0.58";
 
-            Series sFact = new Series("Отработано часов")
+            Series sFact = new Series("Отработано, ч.")
             {
                 ChartType = SeriesChartType.Column,
-                Color = UiTheme.PrimaryGreen,
+                Color = UiTheme.ChartPrimary,
                 IsValueShownAsLabel = dt.Rows.Count <= 10,
                 LabelFormat = "0.#",
                 Font = new Font("Segoe UI", 7.75f, FontStyle.Bold),
                 LabelForeColor = UiTheme.TextPrimary
             };
             sFact["PointWidth"] = "0.58";
-
-            // Проверяем повторяющиеся ФИО (совместители), чтобы подписывать ставку
-            var nameCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            foreach (DataRow r in dt.Rows)
-            {
-                string fn = r["ФИО"].ToString();
-                nameCounts[fn] = nameCounts.ContainsKey(fn) ? nameCounts[fn] + 1 : 1;
-            }
 
             double maxHours = 0.0;
             int limit = Math.Min(dt.Rows.Count, 12);
@@ -1695,8 +2158,6 @@ namespace PayrollClient
                 double normH = Convert.ToDouble(row["ЧасыНорма"]);
 
                 string label = UiTheme.FormatShortName(fullName);
-                if (nameCounts[fullName] > 1)
-                    label = $"{label} ({rate:0.##})";
 
                 if (factH > maxHours) maxHours = factH;
                 if (normH > maxHours) maxHours = normH;
@@ -1704,10 +2165,10 @@ namespace PayrollClient
                 double pct = normH > 0 ? (factH / normH) * 100.0 : 0.0;
 
                 int iNorm = sNorm.Points.AddXY(label, normH);
-                sNorm.Points[iNorm].ToolTip = $"{fullName} (ставка {rate:0.##})\nНорма: {normH:0.#} ч.";
+                sNorm.Points[iNorm].ToolTip = $"{fullName} (общая ставка {rate:0.##})\nНорма: {normH:0.#} ч.";
 
                 int iFact = sFact.Points.AddXY(label, factH);
-                sFact.Points[iFact].ToolTip = $"{fullName} (ставка {rate:0.##})\nОтработано: {factH:0.#} из {normH:0.#} ч. ({pct:0.#}%)";
+                sFact.Points[iFact].ToolTip = $"{fullName} (общая ставка {rate:0.##})\nОтработано: {factH:0.#} из {normH:0.#} ч. ({pct:0.#}%)";
             }
 
             area.AxisX.LabelStyle.Angle = limit > 6 ? -25 : 0;
@@ -1738,7 +2199,7 @@ namespace PayrollClient
         }
 
         // =========================================================================
-        // 6. ЭКРАН «ПОЛЬЗОВАТЕЛИ»
+        // 6. ЭКРАН «ПОЛЬЗОВАТЕЛИ» (С ЗАЩИТОЙ ОТ УДАЛЕНИЯ САМОГО СЕБЯ)
         // =========================================================================
         private void LoadUsersScreen()
         {
@@ -1789,10 +2250,22 @@ namespace PayrollClient
                             else staff++;
                         }
 
+                        // Подсвечиваем текущую учётную запись администратора
+                        foreach (DataGridViewRow gRow in dgv.Rows)
+                        {
+                            int uid = dgv.Columns["UserID"] != null ? Convert.ToInt32(gRow.Cells["UserID"].Value) : -1;
+                            string lg = dgv.Columns["Логин"] != null ? gRow.Cells["Логин"].Value.ToString() : string.Empty;
+                            if ((_currentUserId > 0 && uid == _currentUserId) ||
+                                (!string.IsNullOrEmpty(_currentUserLogin) && string.Equals(lg, _currentUserLogin, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                gRow.DefaultCellStyle.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+                            }
+                        }
+
                         lblFooter.Text =
-                            $"Всего пользователей: {dt.Rows.Count}   |   " +
-                            $"Администраторов: {admins}   |   " +
-                            $"Бухгалтеров: {accountants}   |   " +
+                            $"Всего пользователей: {dt.Rows.Count}  |  " +
+                            $"Администраторов: {admins}  |  " +
+                            $"Бухгалтеров: {accountants}  |  " +
                             $"Сотрудников: {staff}";
                     }
                     else
@@ -1824,8 +2297,15 @@ namespace PayrollClient
                     {
                         var req = new NetworkMessage { Command = "ADD_USER", Data = $"{result[0].Trim()}|{result[1]}|{roleId}" };
                         var res = new ServerConnection().SendRequest(req);
-                        if (res.IsSuccess) { loadData(); MessageBox.Show("Пользователь добавлен!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information); }
-                        else MessageBox.Show("Ошибка: " + (res.ErrorMessage ?? "возможно, логин занят"));
+                        if (res.IsSuccess)
+                        {
+                            loadData();
+                            MessageBox.Show("Пользователь добавлен!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show("Ошибка: " + (res.ErrorMessage ?? "возможно, логин уже занят"));
+                        }
                     }
                     catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
                 }
@@ -1840,15 +2320,40 @@ namespace PayrollClient
                 string loginCol = dgv.Columns["Логин"] != null ? "Логин" : "Login";
                 string login = dgv.SelectedRows[0].Cells[loginCol].Value.ToString();
 
+                // Защита от удаления собственной учётной записи администратора
+                if ((_currentUserId > 0 && userId == _currentUserId) ||
+                    (!string.IsNullOrEmpty(_currentUserLogin) &&
+                     string.Equals(login, _currentUserLogin, StringComparison.OrdinalIgnoreCase)))
+                {
+                    MessageBox.Show(
+                        $"Вы не можете удалить собственную учётную запись «{login}», под которой выполнен вход!",
+                        "Действие запрещено",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
                 if (MessageBox.Show($"Удалить пользователя «{login}»?", "Подтверждение",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                 {
                     try
                     {
-                        var req = new NetworkMessage { Command = "DELETE_USER", Data = userId.ToString() };
+                        var req = new NetworkMessage
+                        {
+                            Command = "DELETE_USER",
+                            Data = $"{userId}|{_currentUserId}"
+                        };
                         var res = new ServerConnection().SendRequest(req);
-                        if (res.IsSuccess) { loadData(); MessageBox.Show("Пользователь удалён!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information); }
-                        else MessageBox.Show("Ошибка удаления: " + res.ErrorMessage);
+                        if (res.IsSuccess)
+                        {
+                            loadData();
+                            MessageBox.Show("Пользователь удалён!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show(res.ErrorMessage, "Удаление невозможно",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
                     }
                     catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
                 }
@@ -1950,12 +2455,19 @@ namespace PayrollClient
             return $"{years} г. {months} мес. {days} дн.";
         }
 
-        private void ShowEmployeeDetails(string fullName, string position, string department, DateTime hireDate)
+        private void ShowEmployeeDetails(
+            string fullName,
+            string position,
+            string department,
+            string employmentType,
+            decimal totalRate,
+            string benefits,
+            DateTime hireDate)
         {
             using (Form detailsForm = new Form())
             {
                 detailsForm.Text = "Карточка сотрудника";
-                detailsForm.ClientSize = new Size(460, 295);
+                detailsForm.ClientSize = new Size(470, 365);
                 detailsForm.StartPosition = FormStartPosition.CenterParent;
                 detailsForm.FormBorderStyle = FormBorderStyle.FixedDialog;
                 detailsForm.MaximizeBox = false;
@@ -1976,15 +2488,18 @@ namespace PayrollClient
                 detailsForm.Controls.Add(header);
 
                 string expText = CalculateExactExperience(hireDate);
+                string cleanDept = UiTheme.FormatDepartmentName(department);
 
-                Label lblPos = new Label { Text = $"Должность:  {position}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 74), AutoSize = true };
-                Label lblDept = new Label { Text = $"Подразделение:  {department}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 104), AutoSize = true };
-                Label lblHire = new Label { Text = $"Дата приёма:  {hireDate:dd.MM.yyyy}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 134), AutoSize = true };
+                Label lblPos = new Label { Text = $"Должность:  {position}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 72), AutoSize = true };
+                Label lblDept = new Label { Text = $"Кафедра:  {cleanDept}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 100), AutoSize = true };
+                Label lblEmpType = new Label { Text = $"Занятость:  {employmentType} (общая ставка: {totalRate:0.##})", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 128), AutoSize = true };
+                Label lblBen = new Label { Text = $"Налоговые льготы:  {benefits}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 156), AutoSize = true };
+                Label lblHire = new Label { Text = $"Дата приёма:  {hireDate:dd.MM.yyyy}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 184), AutoSize = true };
 
                 Panel expCard = UiTheme.CreateCardPanel(leftAccent: true, topAccent: false);
                 expCard.BackColor = UiTheme.MintPale;
-                expCard.Location = new Point(24, 170);
-                expCard.Size = new Size(412, 58);
+                expCard.Location = new Point(24, 222);
+                expCard.Size = new Size(422, 60);
 
                 Label lblExpTitle = new Label
                 {
@@ -2005,10 +2520,13 @@ namespace PayrollClient
                 expCard.Controls.Add(lblExpTitle);
                 expCard.Controls.Add(lblExpValue);
 
-                Button btnOk = UiTheme.CreatePrimaryButton("Закрыть", 326, 244, 110, 36);
+                Button btnOk = UiTheme.CreatePrimaryButton("Закрыть", 336, 306, 110, 36);
                 btnOk.DialogResult = DialogResult.OK;
 
-                detailsForm.Controls.AddRange(new Control[] { lblPos, lblDept, lblHire, expCard, btnOk });
+                detailsForm.Controls.AddRange(new Control[]
+                {
+                    lblPos, lblDept, lblEmpType, lblBen, lblHire, expCard, btnOk
+                });
                 detailsForm.AcceptButton = btnOk;
                 detailsForm.CancelButton = btnOk;
                 detailsForm.ShowDialog();

@@ -1,4 +1,6 @@
-﻿using System.Data.SqlClient;
+﻿using System;
+using System.Data.SqlClient;
+using System.Globalization;
 using PayrollServer.Database;
 
 namespace PayrollServer.Logic
@@ -11,21 +13,52 @@ namespace PayrollServer.Logic
             {
                 conn.Open();
 
-                var cmd1 = new SqlCommand("SELECT COUNT(*) FROM Employees", conn);
-                int empCount = (int)cmd1.ExecuteScalar();
+                // Количество уникальных сотрудников в штате (совместитель считается как 1 человек)
+                string empSql = "SELECT COUNT(DISTINCT LTRIM(RTRIM(LOWER(FullName)))) FROM Employees";
+                int empCount;
+                using (var cmd1 = new SqlCommand(empSql, conn))
+                {
+                    empCount = Convert.ToInt32(cmd1.ExecuteScalar());
+                }
 
-                var cmd2 = new SqlCommand("SELECT COUNT(*) FROM Users", conn);
-                int userCount = (int)cmd2.ExecuteScalar();
+                int userCount;
+                using (var cmd2 = new SqlCommand("SELECT COUNT(*) FROM Users", conn))
+                {
+                    userCount = Convert.ToInt32(cmd2.ExecuteScalar());
+                }
 
-                var cmd3 = new SqlCommand("SELECT SUM(NetSalary) FROM PayrollCalculations", conn);
-                object sumObj = cmd3.ExecuteScalar();
-                decimal totalFund = sumObj != System.DBNull.Value ? (decimal)sumObj : 0;
+                decimal totalFund;
+                using (var cmd3 = new SqlCommand("SELECT SUM(NetSalary) FROM PayrollCalculations", conn))
+                {
+                    object sumObj = cmd3.ExecuteScalar();
+                    totalFund = (sumObj != null && sumObj != DBNull.Value) ? Convert.ToDecimal(sumObj) : 0m;
+                }
 
-                var cmd4 = new SqlCommand("SELECT COUNT(*) FROM Departments", conn);
-                int deptCount = (int)cmd4.ExecuteScalar();
+                // Считаем учебные кафедры (DepartmentType = 1), если столбец есть, иначе все записи Departments
+                bool hasDeptType;
+                using (var chk = new SqlCommand(
+                    "SELECT CASE WHEN COL_LENGTH('dbo.Departments', 'DepartmentType') IS NOT NULL THEN 1 ELSE 0 END", conn))
+                {
+                    hasDeptType = Convert.ToInt32(chk.ExecuteScalar()) == 1;
+                }
 
-                // Возвращаем строку, которую клиент разобьет (сумма в InvariantCulture)
-                return $"{empCount}|{userCount}|{totalFund.ToString(System.Globalization.CultureInfo.InvariantCulture)}|{deptCount}";
+                int deptCount;
+                string deptSql = hasDeptType
+                    ? "SELECT COUNT(*) FROM Departments WHERE DepartmentType = 1"
+                    : "SELECT COUNT(*) FROM Departments";
+                using (var cmd4 = new SqlCommand(deptSql, conn))
+                {
+                    deptCount = Convert.ToInt32(cmd4.ExecuteScalar());
+                    if (deptCount == 0 && hasDeptType)
+                    {
+                        using (var fallback = new SqlCommand("SELECT COUNT(*) FROM Departments", conn))
+                        {
+                            deptCount = Convert.ToInt32(fallback.ExecuteScalar());
+                        }
+                    }
+                }
+
+                return $"{empCount}|{userCount}|{totalFund.ToString(CultureInfo.InvariantCulture)}|{deptCount}";
             }
         }
     }

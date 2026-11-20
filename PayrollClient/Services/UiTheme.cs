@@ -44,6 +44,15 @@ namespace PayrollClient.Services
         public static readonly Color DisabledBorder = Color.FromArgb(214, 224, 218);
         public static readonly Color DisabledFg = Color.FromArgb(148, 165, 154);
 
+        // --- Спокойная приглушённая шалфейно-зелёная палитра для графиков ---
+        public static readonly Color ChartPrimary = Color.FromArgb(62, 114, 87);      // Спокойный хвойно-шалфейный
+        public static readonly Color ChartSecondary = Color.FromArgb(116, 154, 134);  // Мягкий приглушённый шалфейный
+        public static readonly Color ChartTertiary = Color.FromArgb(164, 190, 176);   // Светлый серо-мятный
+        public static readonly Color ChartQuaternary = Color.FromArgb(204, 218, 210); // Нежный пастельно-шалфейный
+        public static readonly Color ChartMutedBar = Color.FromArgb(196, 213, 203);   // Спокойный фон для «Начислено» / «Норма»
+        public static readonly Color ChartMutedBorder = Color.FromArgb(152, 177, 163);// Тонкий контур вспомогательных столбцов
+        public static readonly Color ChartAreaFill = Color.FromArgb(34, 62, 114, 87); // Мягкая полупрозрачная заливка динамики
+
         // Включение двойной буферизации для плавной отрисовки без мерцания
         public static void EnableDoubleBuffering(Control control)
         {
@@ -321,10 +330,20 @@ namespace PayrollClient.Services
             return dgv;
         }
 
-        // Белая карточка с заголовком и настроенным компонентом Chart
+        // Белая карточка с заголовком и настроенным компонентом Chart (спокойная палитра)
         public static Chart CreateChartCard(Control parent, string title, out Label lblSubtitle)
         {
-            Panel card = CreateCardPanel(leftAccent: false, topAccent: true);
+            Panel card = CreateCardPanel(leftAccent: false, topAccent: false);
+            card.Paint += (s, e) =>
+            {
+                if (card.ClientRectangle.Width > 1)
+                {
+                    using (SolidBrush topBrush = new SolidBrush(ChartPrimary))
+                    {
+                        e.Graphics.FillRectangle(topBrush, 0, 0, card.ClientRectangle.Width, 3);
+                    }
+                }
+            };
             card.Dock = DockStyle.Fill;
             card.Margin = new Padding(6);
             card.Padding = new Padding(12, 9, 12, 8);
@@ -450,6 +469,25 @@ namespace PayrollClient.Services
             if (parts.Length == 1) return parts[0];
             if (parts.Length == 2) return $"{parts[0]} {parts[1][0]}.";
             return $"{parts[0]} {parts[1][0]}.{parts[2][0]}.";
+        }
+
+        // Убирает повторяющееся слово «Кафедра » в начале названия, оставляя специализацию с заглавной буквы
+        public static string FormatDepartmentName(string rawName)
+        {
+            if (string.IsNullOrWhiteSpace(rawName)) return string.Empty;
+
+            string trimmed = rawName.Trim();
+            const string prefix = "кафедра ";
+            if (trimmed.Length > prefix.Length &&
+                trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string rest = trimmed.Substring(prefix.Length).TrimStart();
+                if (rest.Length == 0) return trimmed;
+                if (rest.Length == 1) return rest.ToUpper();
+                return char.ToUpper(rest[0]) + rest.Substring(1);
+            }
+
+            return trimmed;
         }
     }
 }

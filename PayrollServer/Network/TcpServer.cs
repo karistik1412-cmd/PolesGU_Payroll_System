@@ -154,9 +154,13 @@ namespace PayrollServer.Network
             }
             else if (request.Command == "ADD_EMPLOYEE")
             {
+                // Формат Data: "ФИО|PositionID|DepartmentID|Ставка|ТипЗанятости|ЛьготаКат|ЛьготаДети"
                 string[] parts = request.Data.Split('|');
                 decimal rate = Convert.ToDecimal(parts[3], CultureInfo.InvariantCulture);
-                bool ok = _employeeService.AddEmployee(parts[0], int.Parse(parts[1]), int.Parse(parts[2]), rate, parts[4]);
+                int benCat = parts.Length > 5 ? int.Parse(parts[5]) : 0;
+                int childBen = parts.Length > 6 ? int.Parse(parts[6]) : 0;
+                bool ok = _employeeService.AddEmployee(
+                    parts[0], int.Parse(parts[1]), int.Parse(parts[2]), rate, parts[4], benCat, childBen);
                 response.IsSuccess = ok;
                 response.Data = ok ? "Сотрудник принят на работу!" : "Ошибка";
                 if (!ok) response.ErrorMessage = "Не удалось добавить сотрудника.";
@@ -170,10 +174,13 @@ namespace PayrollServer.Network
             }
             else if (request.Command == "UPDATE_EMPLOYEE")
             {
-                // Формат Data: "ID|ФИО|ID_Должности|ID_Кафедры|Ставка|Тип"
+                // Формат Data: "ID|ФИО|ID_Должности|ID_Кафедры|Ставка|Тип|ЛьготаКат|ЛьготаДети"
                 string[] parts = request.Data.Split('|');
                 decimal rate = Convert.ToDecimal(parts[4], CultureInfo.InvariantCulture);
-                bool ok = _employeeService.UpdateEmployee(int.Parse(parts[0]), parts[1], int.Parse(parts[2]), int.Parse(parts[3]), rate, parts[5]);
+                int benCat = parts.Length > 6 ? int.Parse(parts[6]) : 0;
+                int childBen = parts.Length > 7 ? int.Parse(parts[7]) : 0;
+                bool ok = _employeeService.UpdateEmployee(
+                    int.Parse(parts[0]), parts[1], int.Parse(parts[2]), int.Parse(parts[3]), rate, parts[5], benCat, childBen);
                 response.IsSuccess = ok;
                 response.Data = ok ? "Данные сотрудника обновлены!" : "Ошибка";
                 if (!ok) response.ErrorMessage = "Не удалось обновить данные сотрудника.";
@@ -209,7 +216,13 @@ namespace PayrollServer.Network
                 int month;
                 int year;
                 ParseMonthAndYear(request.Data, out month, out year);
-                var payrollTable = _payrollService.CalculatePayroll(month, year);
+                int halfMode = 2;
+                if (!string.IsNullOrWhiteSpace(request.Data))
+                {
+                    string[] parts = request.Data.Split('|');
+                    if (parts.Length >= 3) int.TryParse(parts[2], out halfMode);
+                }
+                var payrollTable = _payrollService.CalculatePayroll(month, year, halfMode);
                 response.Data = JsonConvert.SerializeObject(payrollTable);
                 response.IsSuccess = true;
             }
@@ -266,7 +279,11 @@ namespace PayrollServer.Network
             }
             else if (request.Command == "DELETE_USER")
             {
-                bool ok = _userService.DeleteUser(int.Parse(request.Data));
+                string[] parts = request.Data.Split('|');
+                int targetUserId = int.Parse(parts[0]);
+                int currentUserId = -1;
+                if (parts.Length >= 2) int.TryParse(parts[1], out currentUserId);
+                bool ok = _userService.DeleteUser(targetUserId, currentUserId);
                 response.IsSuccess = ok;
                 response.Data = ok ? "Пользователь удален" : "Ошибка";
                 if (!ok) response.ErrorMessage = "Не удалось удалить пользователя.";

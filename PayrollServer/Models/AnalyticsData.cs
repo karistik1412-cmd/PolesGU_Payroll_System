@@ -12,6 +12,8 @@ namespace PayrollServer.Models
         public int PaidEmployeesCount { get; set; }
         public decimal TotalBaseSalary { get; set; }
         public decimal TotalBonus { get; set; }
+        public decimal TotalSickVacationPay { get; set; }
+        public decimal TotalTaxDeduction { get; set; }
         public decimal TotalTax { get; set; }
         public decimal TotalFszen { get; set; }
         public decimal TotalUnion { get; set; }

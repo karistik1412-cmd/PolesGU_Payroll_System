@@ -2,7 +2,7 @@
 
 namespace PayrollServer.Models
 {
-    // Модель строки табеля учета рабочего времени
+    // Модель строки табеля учёта рабочего времени
     public class TimesheetEntry
     {
         public int EmployeeId { get; set; }
@@ -13,6 +13,8 @@ namespace PayrollServer.Models
         public decimal HoursWorked { get; set; }
         public decimal NormHours { get; set; }
         public bool HasHours { get; set; }
+        public int SickDays { get; set; }
+        public int VacationDays { get; set; }
     }
 
     // Запрос на импорт/сохранение табеля за выбранный период
