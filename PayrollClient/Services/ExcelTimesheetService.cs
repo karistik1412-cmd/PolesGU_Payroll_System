@@ -18,6 +18,8 @@ namespace PayrollClient.Services
         public decimal HoursWorked { get; set; }
         public decimal NormHours { get; set; }
         public bool HasHours { get; set; }
+        public int SickDays { get; set; }
+        public int VacationDays { get; set; }
     }
 
     public class TimesheetImportRequestDto
@@ -52,6 +54,8 @@ namespace PayrollClient.Services
         public int PaidEmployeesCount { get; set; }
         public decimal TotalBaseSalary { get; set; }
         public decimal TotalBonus { get; set; }
+        public decimal TotalSickVacationPay { get; set; }
+        public decimal TotalTaxDeduction { get; set; }
         public decimal TotalTax { get; set; }
         public decimal TotalFszen { get; set; }
         public decimal TotalUnion { get; set; }
@@ -145,6 +149,8 @@ namespace PayrollClient.Services
             int normDaysCol = -1;
             int factHoursCol = -1;
             int normHoursCol = -1;
+            int sickDaysCol = -1;
+            int vacDaysCol = -1;
             var dayCols = new Dictionary<int, int>();
 
             // Ищем строку заголовков в первых 20 строках
@@ -190,7 +196,8 @@ namespace PayrollClient.Services
                 string subText = hasSubHeader ? NormalizeHeader(ReadText(ws.Cell(headerRow + 1, c))) : string.Empty;
 
                 MapHeaderColumn(topText, c, ref idCol, ref nameCol, ref rateCol,
-                    ref factDaysCol, ref normDaysCol, ref factHoursCol, ref normHoursCol, dayCols);
+                    ref factDaysCol, ref normDaysCol, ref factHoursCol, ref normHoursCol,
+                    ref sickDaysCol, ref vacDaysCol, dayCols);
 
                 if (hasSubHeader && !string.IsNullOrEmpty(subText))
                 {
@@ -206,10 +213,14 @@ namespace PayrollClient.Services
                         int prevNormDays = normDaysCol;
                         int prevHours = factHoursCol;
                         int prevNormHours = normHoursCol;
+                        int prevSick = sickDaysCol;
+                        int prevVac = vacDaysCol;
                         MapHeaderColumn(subText, c, ref idCol, ref nameCol, ref rateCol,
-                            ref factDaysCol, ref normDaysCol, ref factHoursCol, ref normHoursCol, dayCols);
+                            ref factDaysCol, ref normDaysCol, ref factHoursCol, ref normHoursCol,
+                            ref sickDaysCol, ref vacDaysCol, dayCols);
                         if (factDaysCol != prevDays || normDaysCol != prevNormDays ||
-                            factHoursCol != prevHours || normHoursCol != prevNormHours)
+                            factHoursCol != prevHours || normHoursCol != prevNormHours ||
+                            sickDaysCol != prevSick || vacDaysCol != prevVac)
                         {
                             dataStartRow = headerRow + 2;
                         }
@@ -269,11 +280,13 @@ namespace PayrollClient.Services
                         entry.Rate = Math.Round(rateVal, 2);
                 }
 
-                // Считываем дни и часы по сетке чисел месяца (1..31), если она заполнена
+                // Считываем дни, часы, больничные (Б) и отпуска (О) по сетке чисел месяца (1..31)
                 bool usedDailyGrid = false;
                 if (dayCols.Count >= 10)
                 {
                     int countedDays = 0;
+                    int countedSick = 0;
+                    int countedVacation = 0;
                     decimal summedHours = 0m;
                     bool hasAnyDayContent = false;
 
@@ -297,9 +310,13 @@ namespace PayrollClient.Services
                             {
                                 hasAnyDayContent = true;
                                 string normMark = mark.Trim().ToUpperInvariant();
-                                // Если стоит отметка явки "Я" без числа часов
+                                // Явка (Я), больничный (Б / БЛ / Т), оплачиваемый отпуск (О / ОТ / ОТПУСК)
                                 if (normMark == "Я")
                                     countedDays++;
+                                else if (normMark == "Б" || normMark == "БЛ" || normMark == "Т")
+                                    countedSick++;
+                                else if (normMark == "О" || normMark == "ОТ" || normMark == "ОТПУСК")
+                                    countedVacation++;
                             }
                         }
                     }
@@ -307,6 +324,8 @@ namespace PayrollClient.Services
                     if (hasAnyDayContent)
                     {
                         entry.DaysWorked = countedDays;
+                        entry.SickDays = countedSick;
+                        entry.VacationDays = countedVacation;
                         if (summedHours > 0m)
                         {
                             entry.HoursWorked = Math.Round(summedHours, 2);
@@ -319,6 +338,21 @@ namespace PayrollClient.Services
                         }
                         usedDailyGrid = true;
                     }
+                }
+
+                // Если отдельных отметок Б/О в сетке нет, но есть итоговые столбцы «Больничный» / «Отпуск» — считываем их
+                if (entry.SickDays == 0 && sickDaysCol > 0)
+                {
+                    decimal sVal;
+                    if (ReadDecimal(ws.Cell(r, sickDaysCol), out sVal) && sVal > 0m)
+                        entry.SickDays = (int)Math.Round(sVal, MidpointRounding.AwayFromZero);
+                }
+
+                if (entry.VacationDays == 0 && vacDaysCol > 0)
+                {
+                    decimal vVal;
+                    if (ReadDecimal(ws.Cell(r, vacDaysCol), out vVal) && vVal > 0m)
+                        entry.VacationDays = (int)Math.Round(vVal, MidpointRounding.AwayFromZero);
                 }
 
                 // Если сетки по дням нет или она пустая — берем итоговые столбцы
@@ -619,6 +653,8 @@ namespace PayrollClient.Services
             ref int normDaysCol,
             ref int factHoursCol,
             ref int normHoursCol,
+            ref int sickDaysCol,
+            ref int vacDaysCol,
             Dictionary<int, int> dayCols)
         {
             if (string.IsNullOrEmpty(h)) return;
@@ -643,11 +679,19 @@ namespace PayrollClient.Services
             {
                 rateCol = col;
             }
+            else if (sickDaysCol < 0 && (h.Contains("больнич") || h.Contains("нетрудосп") || h == "б" || h == "дни б" || h == "sickdays"))
+            {
+                sickDaysCol = col;
+            }
+            else if (vacDaysCol < 0 && (h.Contains("отпуск") || h == "о" || h == "дни о" || h == "vacationdays"))
+            {
+                vacDaysCol = col;
+            }
             else if (normDaysCol < 0 && ((h.Contains("норм") && h.Contains("дн")) || h == "normdays"))
             {
                 normDaysCol = col;
             }
-            else if (normHoursCol < 0 && ((h.Contains("норм") && h.Contains("час")) || h == "normhours"))
+            else if (normHoursCol < 0 && ((h.Contains("норм") && (h.Contains("час") || h.EndsWith("ч.") || h.EndsWith(" ч"))) || h == "normhours"))
             {
                 normHoursCol = col;
             }
@@ -660,8 +704,8 @@ namespace PayrollClient.Services
                 factDaysCol = col;
             }
             else if (factHoursCol < 0 && (
-                (h.Contains("отраб") && h.Contains("час")) ||
-                (h.Contains("факт") && h.Contains("час")) ||
+                (h.Contains("отраб") && (h.Contains("час") || h.EndsWith("ч.") || h.EndsWith(" ч"))) ||
+                (h.Contains("факт") && (h.Contains("час") || h.EndsWith("ч."))) ||
                 (h.Contains("всего") && h.Contains("час")) ||
                 (h.Contains("итого") && h.Contains("час")) ||
                 h == "часы" || h == "часов" || h == "hoursworked"))
