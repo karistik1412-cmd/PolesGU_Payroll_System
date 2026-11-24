@@ -1151,8 +1151,9 @@ namespace PayrollClient
                 ForeColor = UiTheme.TextPrimary
             };
             cmbHalf.Items.Add("1-я половина (аванс)");
+            cmbHalf.Items.Add("2-я половина (окончательный расчёт)");
             cmbHalf.Items.Add("Весь месяц (1-я + 2-я пол.)");
-            cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : 1;
+            cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : (_selectedHalfMode == 3 ? 2 : 1);
             toolbar.Controls.Add(cmbHalf);
 
             Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 488, 8, 108);
@@ -1416,7 +1417,7 @@ namespace PayrollClient
             {
                 _selectedMonth = cmbMonth.SelectedIndex + 1;
                 _selectedYear = (int)nudYear.Value;
-                _selectedHalfMode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
+                _selectedHalfMode = cmbHalf.SelectedIndex == 0 ? 1 : (cmbHalf.SelectedIndex == 2 ? 3 : 2);
 
                 if (_payrollCache != null
                     && _payrollCacheMonth == _selectedMonth
