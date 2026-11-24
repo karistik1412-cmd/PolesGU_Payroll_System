@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
@@ -504,15 +504,13 @@ namespace PayrollClient
             Panel toolbar = CreateToolbarCard();
 
             Button btnAddEmp = UiTheme.CreatePrimaryButton("+ Принять на работу", 12, 8, 172);
-            Button btnAddPartTime = UiTheme.CreateAccentButton("+ Совместительство", 192, 8, 168);
-            Button btnEditEmp = UiTheme.CreateOutlineButton("Редактировать", 368, 8, 135);
-            Button btnDetails = UiTheme.CreateOutlineButton("Карточка сотрудника", canManage ? 511 : 12, 8, 166);
-            Button btnDeleteEmp = UiTheme.CreateDangerButton("Уволить", 685, 8, 106);
+            Button btnEditEmp = UiTheme.CreateOutlineButton("Редактировать", 192, 8, 135);
+            Button btnDetails = UiTheme.CreateOutlineButton("Карточка сотрудника", canManage ? 335 : 12, 8, 166);
+            Button btnDeleteEmp = UiTheme.CreateDangerButton("Уволить", 509, 8, 106);
 
             if (canManage)
             {
                 toolbar.Controls.Add(btnAddEmp);
-                toolbar.Controls.Add(btnAddPartTime);
                 toolbar.Controls.Add(btnEditEmp);
                 toolbar.Controls.Add(btnDeleteEmp);
             }
@@ -642,34 +640,6 @@ namespace PayrollClient
             btnAddEmp.Click += (s, e) =>
             {
                 using (var form = new AddEmployeeForm())
-                {
-                    if (form.ShowDialog() == DialogResult.OK)
-                    {
-                        _payrollCache = null;
-                        loadData();
-                    }
-                }
-            };
-
-            // Быстрое добавление внутреннего совместительства выбранному преподавателю (на той же или другой кафедре)
-            btnAddPartTime.Click += (s, e) =>
-            {
-                if (dgv.SelectedRows.Count == 0)
-                {
-                    MessageBox.Show("Выберите сотрудника, которому нужно оформить внутреннее совместительство.");
-                    return;
-                }
-
-                DataGridViewRow sel = dgv.SelectedRows[0];
-                string fullName = sel.Cells["ФИО"].Value.ToString();
-                int posId = Convert.ToInt32(sel.Cells["PositionID"].Value);
-                int deptId = Convert.ToInt32(sel.Cells["DepartmentID"].Value);
-                int benCat = dgv.Columns["BenefitCategory"] != null && sel.Cells["BenefitCategory"].Value != DBNull.Value
-                    ? Convert.ToInt32(sel.Cells["BenefitCategory"].Value) : 0;
-                int childBen = dgv.Columns["ChildrenBenefit"] != null && sel.Cells["ChildrenBenefit"].Value != DBNull.Value
-                    ? Convert.ToInt32(sel.Cells["ChildrenBenefit"].Value) : 0;
-
-                using (var form = new AddEmployeeForm(fullName, posId, deptId, benCat, childBen))
                 {
                     if (form.ShowDialog() == DialogResult.OK)
                     {
@@ -1185,15 +1155,17 @@ namespace PayrollClient
             cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : 1;
             toolbar.Controls.Add(cmbHalf);
 
-            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 488, 8, 112);
-            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 606, 8, 128);
-            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 740, 8, 128);
-            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 874, 8, 102);
+            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 488, 8, 108);
+            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 602, 8, 124);
+            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 732, 8, 124);
+            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 862, 8, 88);
+            Button btnExportOne = UiTheme.CreateOutlineButton("Листок в Excel", 956, 8, 124);
 
             btnSave.Enabled = false;
             btnExport.Enabled = false;
+            btnExportOne.Enabled = false;
 
-            toolbar.Controls.AddRange(new Control[] { btnCalculate, btnImportTs, btnSave, btnExport });
+            toolbar.Controls.AddRange(new Control[] { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne });
 
             Label lblTotals;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblTotals);
@@ -1300,9 +1272,9 @@ namespace PayrollClient
                         $"Итого аванс к выплате: {sumAdv:N2} руб.  |  " +
                         "Окончательный расчёт и удержания — в конце месяца";
 
-                    // В БД фиксируется итоговая месячная ведомость, а выгрузить в Excel можно обе
-                    btnSave.Enabled = false;
+                    btnSave.Enabled = dt.Rows.Count > 0;
                     btnExport.Enabled = dt.Rows.Count > 0;
+                    btnExportOne.Enabled = dt.Rows.Count > 0;
                 }
                 else
                 {
@@ -1339,6 +1311,7 @@ namespace PayrollClient
 
                     btnSave.Enabled = dt.Rows.Count > 0;
                     btnExport.Enabled = dt.Rows.Count > 0;
+                    btnExportOne.Enabled = dt.Rows.Count > 0;
                 }
             };
 
@@ -1519,6 +1492,80 @@ namespace PayrollClient
                         MessageBox.Show("Ошибка: " + response.ErrorMessage, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
+            };
+
+            btnExportOne.Click += (s, e) =>
+            {
+                if (dgv.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("Выберите строку сотрудника в таблице!", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                DataGridViewRow sel = dgv.SelectedRows[0];
+                string empName = sel.Cells["ФИО"] != null && sel.Cells["ФИО"].Value != null ? sel.Cells["ФИО"].Value.ToString() : "Сотрудник";
+                int y = (int)nudYear.Value;
+                int mode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
+                string prefix = mode == 1 ? "Листок_аванс" : "Расчетный_листок";
+
+                using (var sfd = new SaveFileDialog())
+                {
+                    sfd.Filter = "Excel Workbook (*.xlsx)|*.xlsx";
+                    sfd.FileName = $"{prefix}_{empName}_{cmbMonth.Text}_{y}.xlsx";
+                    if (sfd.ShowDialog() == DialogResult.OK)
+                    {
+                        try
+                        {
+                            using (var wb = new XLWorkbook())
+                            {
+                                var ws = wb.Worksheets.Add("Расчётный листок");
+                                ws.Cell(1, 1).Value = "УО «Полесский государственный университет»";
+                                ws.Range(1, 1, 1, 2).Merge();
+                                ws.Cell(1, 1).Style.Font.Bold = true;
+                                ws.Cell(1, 1).Style.Font.FontSize = 13;
+                                ws.Cell(1, 1).Style.Font.FontColor = XLColor.FromHtml("#1F5A39");
+
+                                ws.Cell(2, 1).Value = $"Расчётный листок за {cmbMonth.Text} {y} г. ({(mode == 1 ? "1-я половина" : "Весь месяц")})";
+                                ws.Range(2, 1, 2, 2).Merge();
+                                ws.Cell(2, 1).Style.Font.Italic = true;
+
+                                ws.Cell(4, 1).Value = "Показатель";
+                                ws.Cell(4, 2).Value = "Значение";
+                                ws.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#2E7D4F");
+                                ws.Range(4, 1, 4, 2).Style.Font.FontColor = XLColor.White;
+                                ws.Range(4, 1, 4, 2).Style.Font.Bold = true;
+
+                                int r = 5;
+                                foreach (DataGridViewColumn col in dgv.Columns)
+                                {
+                                    if (!col.Visible || col.Name == "EmployeeID") continue;
+                                    ws.Cell(r, 1).Value = col.HeaderText;
+                                    object val = sel.Cells[col.Index].Value;
+                                    decimal num;
+                                    if (val != null && decimal.TryParse(val.ToString(), out num))
+                                    {
+                                        ws.Cell(r, 2).Value = num;
+                                        ws.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                                    }
+                                    else
+                                    {
+                                        ws.Cell(r, 2).Value = val != null ? val.ToString() : "";
+                                    }
+                                    r++;
+                                }
+                                var tblRange = ws.Range(4, 1, r - 1, 2);
+                                tblRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+                                tblRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                                ws.Columns().AdjustToContents();
+                                wb.SaveAs(sfd.FileName);
+                            }
+                            MessageBox.Show("Расчётный листок сотрудника сохранён!", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("Ошибка экспорта: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
             };
 
             btnExport.Click += (s, e) =>
