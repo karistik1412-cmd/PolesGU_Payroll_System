@@ -269,27 +269,23 @@ namespace PayrollClient
                 AutoSize = true
             };
             cmbChildrenBenefit = CreateComboBox(x, 458, w);
-            cmbChildrenBenefit.Items.AddRange(new object[]
-            {
-                "Нет детей / иждивенцев (0 руб.)",
-                "1 ребёнок до 18 лет (56 руб.)",
-                "2 ребёнка до 18 лет (214 руб.)",
-                "3 и более детей до 18 лет (321 руб.)",
-                "Одинокий родитель / ребёнок-инвалид (107 руб.)"
-            });
+            cmbChildrenBenefit.Visible = false;
+            cmbChildrenBenefit.Items.AddRange(new object[] { "0", "1", "2", "3", "4" });
             cmbChildrenBenefit.SelectedIndex = 0;
 
-            btnCancel = UiTheme.CreateOutlineButton("Отмена", x + w - 232, 512, 108, 36);
+            btnCancel = UiTheme.CreateOutlineButton("Отмена", x + w - 232, 594, 108, 36);
             btnCancel.DialogResult = DialogResult.Cancel;
 
-            btnSave = UiTheme.CreatePrimaryButton(btnText, x + w - 116, 512, 116, 36);
+            btnSave = UiTheme.CreatePrimaryButton(btnText, x + w - 116, 594, 116, 36);
             btnSave.Click += BtnSave_Click;
 
+            this.ClientSize = new Size(this.ClientSize.Width, 648);
             this.Controls.AddRange(new Control[]
             {
                 lblName, nameBox, lblCategory, cmbCategory, lblPos, cmbPositions,
                 lblDept, cmbDepartments, lblRate, cmbRate, lblEmp, cmbEmployment,
-                lblBenefit, cmbBenefitCategory, lblChildren, cmbChildrenBenefit,
+                lblBenefit, clbBenefits, lblBonuses, clbBonuses,
+                cmbBenefitCategory, cmbChildrenBenefit,
                 btnCancel, btnSave
             });
 
