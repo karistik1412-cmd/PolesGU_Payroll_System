@@ -119,11 +119,11 @@ namespace PayrollClient
                 }
             }
 
-            if (benefitCategory >= 0 && benefitCategory < cmbBenefitCategory.Items.Count)
-                cmbBenefitCategory.SelectedIndex = benefitCategory;
+            for (int i = 0; i < clbBenefits.Items.Count; i++)
+                clbBenefits.SetItemChecked(i, (benefitCategory & (1 << i)) != 0);
 
-            if (childrenBenefit >= 0 && childrenBenefit < cmbChildrenBenefit.Items.Count)
-                cmbChildrenBenefit.SelectedIndex = childrenBenefit;
+            for (int i = 0; i < clbBonuses.Items.Count; i++)
+                clbBonuses.SetItemChecked(i, (childrenBenefit & (1 << i)) != 0);
 
             _suppressAutoRate = false;
         }
@@ -372,8 +372,12 @@ namespace PayrollClient
                 decimal rate = Convert.ToDecimal(rateStr, CultureInfo.InvariantCulture);
                 string rateForServer = rate.ToString(CultureInfo.InvariantCulture);
                 string empType = cmbEmployment.Text;
-                int benCat = Math.Max(0, cmbBenefitCategory.SelectedIndex);
-                int childBen = Math.Max(0, cmbChildrenBenefit.SelectedIndex);
+                int benCat = 0;
+                for (int i = 0; i < clbBenefits.Items.Count; i++)
+                    if (clbBenefits.GetItemChecked(i)) benCat |= (1 << i);
+                int childBen = 0;
+                for (int i = 0; i < clbBonuses.Items.Count; i++)
+                    if (clbBonuses.GetItemChecked(i)) childBen |= (1 << i);
 
                 // Ограничение ТК РБ: внутреннее совместительство не превышает 0,5 ставки
                 if (empType.IndexOf("совмест", StringComparison.OrdinalIgnoreCase) >= 0 && rate > 0.5m)
