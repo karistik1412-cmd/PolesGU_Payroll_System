@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data;
 using System.Drawing;
 using System.Globalization;
@@ -20,6 +20,8 @@ namespace PayrollClient
         private ComboBox cmbEmployment;
         private ComboBox cmbBenefitCategory;
         private ComboBox cmbChildrenBenefit;
+        private CheckedListBox clbBenefits;
+        private CheckedListBox clbBonuses;
         private Button btnSave;
         private Button btnCancel;
 
@@ -199,23 +201,62 @@ namespace PayrollClient
                 }
             };
 
-            // Налоговая льгота работника (ст. 209 НК РБ)
+            // Налоговые льготы работника (множественный выбор по ст. 209 НК РБ)
             Label lblBenefit = new Label
             {
-                Text = "Налоговая льгота сотрудника (вычет по НДФЛ)",
+                Text = "Налоговые льготы (можно выбрать несколько)",
                 Font = labelFont,
                 ForeColor = UiTheme.TextSecondary,
                 Location = new Point(x, 376),
                 AutoSize = true
             };
-            cmbBenefitCategory = CreateComboBox(x, 398, w);
-            cmbBenefitCategory.Items.AddRange(new object[]
+            clbBenefits = new CheckedListBox
             {
-                "Нет (0 руб.)",
-                "Стандартный вычет при доходе до 1 164 руб. (192 руб.)",
-                "Инвалид I–II гр. / ветеран / ЧАЭС (272 руб.)",
+                Location = new Point(x, 398),
+                Size = new Size(w, 82),
+                CheckOnClick = true,
+                Font = new Font("Segoe UI", 8.5f),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            clbBenefits.Items.AddRange(new object[]
+            {
+                "Стандартный вычет (192 руб.)",
+                "На 1 ребёнка / иждивенца (51 руб.)",
+                "На 2 и более детей (97 руб.)",
+                "Одинокий родитель / вдова (97 руб.)",
+                "Инвалид I–II гр. / ЧАЭС (272 руб.)",
                 "Молодой специалист (620 руб.)"
             });
+
+            // Надбавки сотрудника (множественный выбор)
+            Label lblBonuses = new Label
+            {
+                Text = "Надбавки сотрудника (можно выбрать несколько)",
+                Font = labelFont,
+                ForeColor = UiTheme.TextSecondary,
+                Location = new Point(x, 486),
+                AutoSize = true
+            };
+            clbBonuses = new CheckedListBox
+            {
+                Location = new Point(x, 508),
+                Size = new Size(w, 72),
+                CheckOnClick = true,
+                Font = new Font("Segoe UI", 8.5f),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            clbBonuses.Items.AddRange(new object[]
+            {
+                "За стаж работы в бюджетной организации (15%)",
+                "За учёную степень / звание (20%)",
+                "За сложность и напряжённость работы (25%)",
+                "За контрактную форму найма (10%)",
+                "За кураторство / методработу (10%)"
+            });
+
+            cmbBenefitCategory = CreateComboBox(x, 398, w);
+            cmbBenefitCategory.Visible = false;
+            cmbBenefitCategory.Items.AddRange(new object[] { "0", "1", "2", "3" });
             cmbBenefitCategory.SelectedIndex = 0;
 
             // Налоговая льгота на детей / иждивенцев
