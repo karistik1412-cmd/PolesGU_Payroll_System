@@ -1314,7 +1314,7 @@ namespace PayrollClient
                     btnExport.Enabled = dt.Rows.Count > 0;
                     btnExportOne.Enabled = dt.Rows.Count > 0;
                     if (dgv.Columns["К выплате, руб."] != null)
-                        dgv.Columns["К выплате, руб."].Visible = (_selectedHalfMode != 2);
+                        dgv.Columns["К выплате, руб."].Visible = (mode != 2);
                 }
             };
 
