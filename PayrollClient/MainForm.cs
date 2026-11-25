@@ -516,6 +516,11 @@ namespace PayrollClient
             }
             toolbar.Controls.Add(btnDetails);
 
+            Label lblSearchEmp = new Label { Text = "Поиск:", Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, Location = new Point(630, 16), AutoSize = true };
+            TextBox txtSearchEmp = new TextBox { Location = new Point(682, 12), Width = 210, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            toolbar.Controls.Add(lblSearchEmp);
+            toolbar.Controls.Add(txtSearchEmp);
+
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
 
@@ -524,6 +529,19 @@ namespace PayrollClient
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+            txtSearchEmp.TextChanged += (s, e) =>
+            {
+                DataTable dt = dgv.DataSource as DataTable;
+                if (dt != null && dt.Columns.Contains("ФИО"))
+                    dt.DefaultView.RowFilter = string.IsNullOrWhiteSpace(txtSearchEmp.Text)
+                        ? ""
+                        : $"[ФИО] LIKE '%{txtSearchEmp.Text.Trim().Replace("'", "''")}%'";
+            };
+            ContextMenuStrip cmsEmp = new ContextMenuStrip();
+            if (canManage) cmsEmp.Items.Add("Редактировать", null, (s, e) => btnEditEmp.PerformClick());
+            cmsEmp.Items.Add("Карточка сотрудника", null, (s, e) => btnDetails.PerformClick());
+            if (canManage) cmsEmp.Items.Add("Уволить", null, (s, e) => btnDeleteEmp.PerformClick());
+            dgv.ContextMenuStrip = cmsEmp;
 
             Action loadData = () =>
             {
@@ -1177,6 +1195,9 @@ namespace PayrollClient
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+            ContextMenuStrip cmsPay = new ContextMenuStrip();
+            cmsPay.Items.Add("Листок в Excel", null, (s, e) => btnExportOne.PerformClick());
+            dgv.ContextMenuStrip = cmsPay;
             dgv.ShowCellToolTips = true;
             dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8.75f, FontStyle.Bold);
             dgv.DefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
