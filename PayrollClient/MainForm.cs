@@ -135,11 +135,7 @@ namespace PayrollClient
             menuSpacer.BringToFront();
 
             // --- ПУНКТЫ МЕНЮ ---
-            Button btnHome = AddMenuButton(sidebar, "Главная", (s, e) =>
-            {
-                if (_userRole == "Бухгалтер" || _userRole == "Администратор") LoadChartsScreen();
-                else ShowWelcomeScreen();
-            });
+            Button btnHome = AddMenuButton(sidebar, "Главная", (s, e) => ShowWelcomeScreen());
             AddMenuButton(sidebar, "Сотрудники", (s, e) => LoadEmployeesScreen());
 
             if (_userRole == "Бухгалтер" || _userRole == "Администратор")
