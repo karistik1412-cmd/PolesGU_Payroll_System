@@ -448,6 +448,8 @@ namespace PayrollClient
             };
 
             infoCard.Controls.AddRange(new Control[] { lblInfoTitle, lblLine1, lblLine2, lblLine3 });
+            if (_userRole == "Бухгалтер" || _userRole == "Администратор")
+                LoadChartsScreen(true);
         }
 
         private Panel CreateStatCard(string title, string value, string caption)
@@ -1677,16 +1679,20 @@ namespace PayrollClient
         // =========================================================================
         // 5. ЭКРАН «ГРАФИКИ» (СПОКОЙНЫЕ ОТТЕНКИ, ОБЕ ПОДПИСИ ФОТ, ПЕЧАТЬ ОТЧЁТА)
         // =========================================================================
-        private void LoadChartsScreen()
+        private void LoadChartsScreen(bool append = false)
         {
-            _contentPanel.Controls.Clear();
-
-            UiTheme.CreatePageHeader(
-                _contentPanel,
-                "Графики и аналитика",
-                "Фонд оплаты труда по кафедрам, структура удержаний, годовая динамика и отработка часов");
+            if (!append)
+            {
+                _contentPanel.Controls.Clear();
+                UiTheme.CreatePageHeader(
+                    _contentPanel,
+                    "Графики и аналитика",
+                    "Фонд оплаты труда по кафедрам, структура удержаний, годовая динамика и отработка часов");
+            }
+            _contentPanel.AutoScroll = true;
 
             Panel toolbar = CreateToolbarCard();
+            if (append) toolbar.Top = 430;
 
             ComboBox cmbMonths;
             NumericUpDown nudYear;
