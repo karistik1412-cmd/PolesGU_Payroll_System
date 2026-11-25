@@ -142,7 +142,6 @@ namespace PayrollClient
             {
                 AddMenuButton(sidebar, "Табель", (s, e) => LoadTimesheetScreen());
                 AddMenuButton(sidebar, "Расчет зарплаты", (s, e) => LoadPayrollScreen());
-                AddMenuButton(sidebar, "Графики", (s, e) => LoadChartsScreen());
             }
             if (_userRole == "Администратор")
             {
