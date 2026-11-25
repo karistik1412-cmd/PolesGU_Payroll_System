@@ -1354,7 +1354,7 @@ namespace PayrollClient
             {
                 int m = cmbMonth.SelectedIndex + 1;
                 int y = (int)nudYear.Value;
-                int mode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
+                int mode = cmbHalf.SelectedIndex == 0 ? 1 : (cmbHalf.SelectedIndex == 2 ? 3 : 2);
 
                 // Проверка календарной даты (нельзя считать будущий месяц или весь месяц 1-го числа)
                 DateTime today = DateTime.Today;
