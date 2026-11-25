@@ -1338,7 +1338,10 @@ namespace PayrollClient
                     btnExport.Enabled = dt.Rows.Count > 0;
                     btnExportOne.Enabled = dt.Rows.Count > 0;
                     if (dgv.Columns["К выплате, руб."] != null)
+                    {
                         dgv.Columns["К выплате, руб."].Visible = (mode != 2);
+                        if (mode != 2) dgv.Columns["К выплате, руб."].DisplayIndex = dgv.Columns.Count - 1;
+                    }
                     dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
                     dgv.PerformLayout();
                 }
