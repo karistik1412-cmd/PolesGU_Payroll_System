@@ -1724,6 +1724,13 @@ namespace PayrollClient
             chartsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
             chartsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
             chartsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+            if (append)
+            {
+                toolbar.Top = 375;
+                chartsGrid.Top = 435;
+                chartsGrid.Height = 620;
+                chartsGrid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            }
             _contentPanel.Controls.Add(chartsGrid);
 
             string title1 = "1. Фонд оплаты труда по кафедрам, руб.";
