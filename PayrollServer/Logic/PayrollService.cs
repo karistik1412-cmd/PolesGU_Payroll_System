@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
@@ -198,10 +198,25 @@ namespace PayrollServer.Logic
                             }
 
                             // Надбавка за стаж работы в бюджетной организации
-                            decimal bonusPercent = 0.10m;
-                            if (experience >= 5 && experience < 10) bonusPercent = 0.15m;
-                            else if (experience >= 10 && experience < 15) bonusPercent = 0.20m;
-                            else if (experience >= 15) bonusPercent = 0.30m;
+                            decimal bonusPercent = 0m;
+                            if (childrenBenefit > 0)
+                            {
+                                if ((childrenBenefit & (1 << 0)) != 0) bonusPercent += 0.50m;  // За работу в отрасли (50%)
+                                if ((childrenBenefit & (1 << 1)) != 0) bonusPercent += 0.45m;  // За работу по контракту (45%)
+                                if ((childrenBenefit & (1 << 2)) != 0) bonusPercent += 0.30m;  // За специфику в сфере образования (30%)
+                                if ((childrenBenefit & (1 << 3)) != 0) bonusPercent += 0.30m;  // Молодому специалисту (30%)
+                                if ((childrenBenefit & (1 << 4)) != 0) bonusPercent += 0.20m;  // Премия за текущий месяц (20%)
+                                if ((childrenBenefit & (1 << 5)) != 0) bonusPercent += 0.125m; // За высокие достижения (12,5%)
+                                if ((childrenBenefit & (1 << 6)) != 0) bonusPercent += 0.10m;  // За стаж работы (10%)
+                                if ((childrenBenefit & (1 << 7)) != 0) bonusPercent += 1.00m;  // За кураторство (100%)
+                            }
+                            else
+                            {
+                                bonusPercent = 0.10m;
+                                if (experience >= 5 && experience < 10) bonusPercent = 0.15m;
+                                else if (experience >= 10 && experience < 15) bonusPercent = 0.20m;
+                                else if (experience >= 15) bonusPercent = 0.30m;
+                            }
 
                             // Плановый месячный оклад и надбавка по данной ставке (для аванса и среднедневного заработка)
                             decimal plannedTariff = Math.Round(BaseRate * coefficient * rate, 2, MidpointRounding.AwayFromZero);
