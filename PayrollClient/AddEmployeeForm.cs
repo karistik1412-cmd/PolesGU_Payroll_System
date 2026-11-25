@@ -287,7 +287,7 @@ namespace PayrollClient
             btnSave = UiTheme.CreatePrimaryButton(btnText, x + w - 116, 594, 116, 36);
             btnSave.Click += BtnSave_Click;
 
-            this.ClientSize = new Size(this.ClientSize.Width, 648);
+            this.ClientSize = new Size(540, 680);
             this.Controls.AddRange(new Control[]
             {
                 lblName, nameBox, lblCategory, cmbCategory, lblPos, cmbPositions,
