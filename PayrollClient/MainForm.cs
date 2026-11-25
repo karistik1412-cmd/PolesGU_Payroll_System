@@ -569,7 +569,7 @@ namespace PayrollClient
                             dgv.Columns["Ставка"].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                         }
                         if (dgv.Columns["Тип занятости"] != null) dgv.Columns["Тип занятости"].FillWeight = 115;
-                        if (dgv.Columns["Льготы"] != null) dgv.Columns["Льготы"].FillWeight = 125;
+                        if (dgv.Columns["Льготы"] != null) dgv.Columns["Льготы"].Visible = false;
                         if (dgv.Columns["Дата приёма"] != null)
                         {
                             dgv.Columns["Дата приёма"].FillWeight = 82;
