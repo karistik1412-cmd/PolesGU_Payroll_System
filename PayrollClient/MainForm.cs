@@ -1428,7 +1428,7 @@ namespace PayrollClient
                 if (_payrollCache != null
                     && _payrollCacheMonth == _selectedMonth
                     && _payrollCacheYear == _selectedYear
-                    && _payrollCacheHalfMode == _selectedHalfMode)
+                    && (_payrollCacheHalfMode == _selectedHalfMode || (_payrollCacheHalfMode >= 2 && _selectedHalfMode >= 2)))
                 {
                     applyTableFormatting(_payrollCache, _selectedHalfMode);
                 }
