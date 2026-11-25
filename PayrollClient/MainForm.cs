@@ -1561,43 +1561,111 @@ namespace PayrollClient
                             using (var wb = new XLWorkbook())
                             {
                                 var ws = wb.Worksheets.Add("Расчётный листок");
-                                ws.Cell(1, 1).Value = "УО «Полесский государственный университет»";
-                                ws.Range(1, 1, 1, 2).Merge();
-                                ws.Cell(1, 1).Style.Font.Bold = true;
-                                ws.Cell(1, 1).Style.Font.FontSize = 13;
-                                ws.Cell(1, 1).Style.Font.FontColor = XLColor.FromHtml("#1F5A39");
-
-                                ws.Cell(2, 1).Value = $"Расчётный листок за {cmbMonth.Text} {y} г. ({(mode == 1 ? "1-я половина" : "Весь месяц")})";
-                                ws.Range(2, 1, 2, 2).Merge();
-                                ws.Cell(2, 1).Style.Font.Italic = true;
-
-                                ws.Cell(4, 1).Value = "Показатель";
-                                ws.Cell(4, 2).Value = "Значение";
-                                ws.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#2E7D4F");
-                                ws.Range(4, 1, 4, 2).Style.Font.FontColor = XLColor.White;
-                                ws.Range(4, 1, 4, 2).Style.Font.Bold = true;
-
-                                int r = 5;
-                                foreach (DataGridViewColumn col in dgv.Columns)
+                                Func<string, decimal> getVal = (colName) =>
                                 {
-                                    if (!col.Visible || col.Name == "EmployeeID") continue;
-                                    ws.Cell(r, 1).Value = col.HeaderText;
-                                    object val = sel.Cells[col.Index].Value;
-                                    decimal num;
-                                    if (val != null && decimal.TryParse(val.ToString(), out num))
+                                    if (dgv.Columns[colName] == null) return 0m;
+                                    object v = sel.Cells[dgv.Columns[colName].Index].Value;
+                                    decimal d;
+                                    return (v != null && decimal.TryParse(v.ToString(), out d)) ? d : 0m;
+                                };
+                                Func<string, string> getStr = (colName) =>
+                                    dgv.Columns[colName] != null && sel.Cells[dgv.Columns[colName].Index].Value != null
+                                        ? sel.Cells[dgv.Columns[colName].Index].Value.ToString() : "—";
+
+                                decimal oklad = getVal("Оклад, руб.");
+                                decimal nadb = getVal("Надбавка, руб.");
+                                decimal bo = getVal("Б/О, руб.");
+                                decimal gross = oklad + nadb + bo;
+                                decimal vychet = getVal("Вычет, руб.");
+                                decimal ndfl = getVal("НДФЛ, руб.");
+                                decimal fszn = getVal("ФСЗН, руб.");
+                                decimal prof = getVal("Профс., руб.");
+                                decimal avans = getVal("1-я пол., руб.");
+                                if (avans == 0m) avans = getVal("Аванс (1-я пол.), руб.");
+                                decimal doplat = getVal("2-я пол., руб.");
+                                decimal itogo = getVal("К выплате, руб.");
+                                if (itogo == 0m) itogo = avans + doplat;
+                                decimal totalDed = avans + fszn + ndfl + prof;
+
+                                ws.Cell(1, 1).Value = "Расчетный листок";
+                                ws.Range(1, 1, 1, 6).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                                ws.Cell(1, 1).Style.Font.Bold = true;
+                                ws.Cell(1, 1).Style.Font.FontSize = 14;
+
+                                ws.Cell(2, 1).Value = $"{empName}   |   {cmbMonth.Text} {y} г.";
+                                ws.Range(2, 1, 2, 6).Merge().Style.Font.Bold = true;
+
+                                ws.Cell(3, 1).Value = "УО «Полесский государственный университет»";
+                                ws.Range(3, 1, 3, 6).Merge();
+
+                                ws.Cell(4, 1).Value = $"Ставка: {getStr("Ставка")}   |   Дни: {getStr("Дни, дн.")}   |   Часы: {getStr("Часы, ч.")}";
+                                ws.Range(4, 1, 4, 6).Merge().Style.Font.Italic = true;
+
+                                ws.Cell(6, 1).Value = "Начислено";
+                                ws.Range(6, 1, 6, 3).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                                ws.Cell(6, 4).Value = "Удержано";
+                                ws.Range(6, 4, 6, 6).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                                ws.Range(6, 1, 6, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#2E7D4F");
+                                ws.Range(6, 1, 6, 6).Style.Font.FontColor = XLColor.White;
+                                ws.Range(6, 1, 6, 6).Style.Font.Bold = true;
+
+                                string[] hdrs = { "Мес", "Вид оплаты", "Сумма, руб", "Мес", "Вид удержания", "Сумма, руб" };
+                                for (int c = 0; c < 6; c++) ws.Cell(7, c + 1).Value = hdrs[c];
+                                ws.Range(7, 1, 7, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF4EE");
+                                ws.Range(7, 1, 7, 6).Style.Font.Bold = true;
+
+                                var accr = new[] { ("Оклад", oklad), ("Надбавка", nadb), ("Больничный / Отпуск (Б/О)", bo) };
+                                var deds = new[] { ("БАНК Аванс (1-я пол.)", avans), ("Пенсионный взнос (ФСЗН 1%)", fszn), ("Подоходный налог (13%)", ndfl), ("Профсоюзный взнос (1%)", prof) };
+                                int maxRows = Math.Max(accr.Length, deds.Length);
+                                for (int i = 0; i < maxRows; i++)
+                                {
+                                    int r = 8 + i;
+                                    if (i < accr.Length)
                                     {
-                                        ws.Cell(r, 2).Value = num;
-                                        ws.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                                        ws.Cell(r, 1).Value = m;
+                                        ws.Cell(r, 2).Value = accr[i].Item1;
+                                        ws.Cell(r, 3).Value = accr[i].Item2;
+                                        ws.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
                                     }
-                                    else
+                                    if (i < deds.Length)
                                     {
-                                        ws.Cell(r, 2).Value = val != null ? val.ToString() : "";
+                                        ws.Cell(r, 4).Value = m;
+                                        ws.Cell(r, 5).Value = deds[i].Item1;
+                                        ws.Cell(r, 6).Value = deds[i].Item2;
+                                        ws.Cell(r, 6).Style.NumberFormat.Format = "#,##0.00";
                                     }
-                                    r++;
                                 }
-                                var tblRange = ws.Range(4, 1, r - 1, 2);
-                                tblRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-                                tblRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+
+                                int itogRow = 8 + maxRows;
+                                ws.Cell(itogRow, 2).Value = "Итого начислено";
+                                ws.Cell(itogRow, 3).Value = gross;
+                                ws.Cell(itogRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                ws.Cell(itogRow, 5).Value = "Итого удержано";
+                                ws.Cell(itogRow, 6).Value = totalDed;
+                                ws.Cell(itogRow, 6).Style.NumberFormat.Format = "#,##0.00";
+                                ws.Range(itogRow, 1, itogRow, 6).Style.Font.Bold = true;
+
+                                int payRow = itogRow + 1;
+                                ws.Cell(payRow, 2).Value = "К выплате (2-я половина)";
+                                ws.Cell(payRow, 3).Value = doplat;
+                                ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                ws.Cell(payRow, 5).Value = "Итого выплат за месяц";
+                                ws.Cell(payRow, 6).Value = itogo;
+                                ws.Cell(payRow, 6).Style.NumberFormat.Format = "#,##0.00";
+                                ws.Range(payRow, 1, payRow, 6).Style.Font.Bold = true;
+
+                                ws.Range(6, 1, payRow, 6).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+                                ws.Range(6, 1, payRow, 6).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+
+                                int taxRow = payRow + 2;
+                                ws.Cell(taxRow, 1).Value = $"Для расчета подоходного налога за {cmbMonth.Text} {y}:";
+                                ws.Range(taxRow, 1, taxRow, 4).Merge().Style.Font.Bold = true;
+                                ws.Cell(taxRow + 1, 1).Value = "Начислено для подоходного"; ws.Cell(taxRow + 1, 3).Value = gross;
+                                ws.Cell(taxRow + 2, 1).Value = "Вычеты (налоговые льготы)"; ws.Cell(taxRow + 2, 3).Value = vychet;
+                                ws.Cell(taxRow + 3, 1).Value = "Облагаемая сумма"; ws.Cell(taxRow + 3, 3).Value = Math.Max(0m, gross - vychet);
+                                ws.Cell(taxRow + 4, 1).Value = "Удержано подоходного налога"; ws.Cell(taxRow + 4, 3).Value = ndfl;
+                                ws.Range(taxRow + 1, 3, taxRow + 4, 3).Style.NumberFormat.Format = "#,##0.00";
+
                                 ws.Columns().AdjustToContents();
                                 wb.SaveAs(sfd.FileName);
                             }
