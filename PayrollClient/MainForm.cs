@@ -201,7 +201,8 @@ namespace PayrollClient
             sidebar.Controls.Add(bottomPanel);
 
             SetActiveButton(btnHome);
-            ShowWelcomeScreen();
+            if (_userRole == "Бухгалтер" || _userRole == "Администратор") LoadChartsScreen();
+            else ShowWelcomeScreen();
         }
 
         // --- ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ МЕНЮ И ПАНЕЛЕЙ ---
