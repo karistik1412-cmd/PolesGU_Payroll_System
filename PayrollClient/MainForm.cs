@@ -1151,7 +1151,7 @@ namespace PayrollClient
                 ForeColor = UiTheme.TextPrimary
             };
             cmbHalf.Items.Add("1-я половина (аванс)");
-            cmbHalf.Items.Add("2-я половина (окончательный расчёт)");
+            cmbHalf.Items.Add("2-я половина (окончательно)");
             cmbHalf.Items.Add("Весь месяц (1-я + 2-я пол.)");
             cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : (_selectedHalfMode == 3 ? 2 : 1);
             toolbar.Controls.Add(cmbHalf);
@@ -1313,6 +1313,8 @@ namespace PayrollClient
                     btnSave.Enabled = dt.Rows.Count > 0;
                     btnExport.Enabled = dt.Rows.Count > 0;
                     btnExportOne.Enabled = dt.Rows.Count > 0;
+                    if (dgv.Columns["К выплате, руб."] != null)
+                        dgv.Columns["К выплате, руб."].Visible = (halfMode != 2);
                 }
             };
 
