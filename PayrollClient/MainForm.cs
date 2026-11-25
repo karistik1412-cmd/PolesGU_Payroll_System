@@ -354,7 +354,7 @@ namespace PayrollClient
             {
                 isDark = !isDark;
                 btnTheme.Text = isDark ? "Светлая тема" : "Тёмная тема";
-                _contentPanel.BackColor = isDark ? Color.FromArgb(30, 36, 33) : UiTheme.BackgroundLight;
+                _contentPanel.BackColor = isDark ? Color.FromArgb(30, 36, 33) : Color.FromArgb(245, 247, 246);
                 foreach (Control c in _contentPanel.Controls)
                 {
                     if (c is Panel)
