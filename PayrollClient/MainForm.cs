@@ -1629,7 +1629,7 @@ namespace PayrollClient
                                     }
                                     if (i < deds.Length)
                                     {
-                                        ws.Cell(r, 4).Value = m;
+                                        ws.Cell(r, 4).Value = cmbMonth.SelectedIndex + 1;
                                         ws.Cell(r, 5).Value = deds[i].Item1;
                                         ws.Cell(r, 6).Value = deds[i].Item2;
                                         ws.Cell(r, 6).Style.NumberFormat.Format = "#,##0.00";
