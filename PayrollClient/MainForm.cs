@@ -1156,11 +1156,11 @@ namespace PayrollClient
             cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : (_selectedHalfMode == 3 ? 2 : 1);
             toolbar.Controls.Add(cmbHalf);
 
-            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 488, 8, 108);
-            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 602, 8, 124);
-            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 732, 8, 124);
-            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 862, 8, 88);
-            Button btnExportOne = UiTheme.CreateOutlineButton("Листок в Excel", 956, 8, 124);
+            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 558, 8, 108);
+            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 672, 8, 124);
+            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 802, 8, 124);
+            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 932, 8, 88);
+            Button btnExportOne = UiTheme.CreateOutlineButton("Листок в Excel", 1026, 8, 124);
 
             btnSave.Enabled = false;
             btnExport.Enabled = false;
