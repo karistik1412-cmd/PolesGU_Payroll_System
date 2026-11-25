@@ -348,25 +348,6 @@ namespace PayrollClient
                 "Учреждение образования «Полесский государственный университет» — сводная панель системы");
             _contentPanel.AutoScroll = true;
 
-            Button btnTheme = UiTheme.CreateOutlineButton("Тёмная тема", _contentPanel.ClientSize.Width - 170, 14, 140, 32);
-            bool isDark = false;
-            btnTheme.Click += (s, e) =>
-            {
-                isDark = !isDark;
-                btnTheme.Text = isDark ? "Светлая тема" : "Тёмная тема";
-                _contentPanel.BackColor = isDark ? Color.FromArgb(30, 36, 33) : Color.FromArgb(245, 247, 246);
-                foreach (Control c in _contentPanel.Controls)
-                {
-                    if (c is Panel)
-                    {
-                        c.BackColor = isDark ? Color.FromArgb(42, 50, 46) : Color.White;
-                        c.ForeColor = isDark ? Color.WhiteSmoke : UiTheme.TextPrimary;
-                    }
-                }
-            };
-            _contentPanel.Controls.Add(btnTheme);
-            btnTheme.BringToFront();
-
             string empCount = "—";
             string userCount = "—";
             string deptCount = "—";
