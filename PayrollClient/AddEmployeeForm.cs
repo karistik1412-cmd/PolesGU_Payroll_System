@@ -194,11 +194,16 @@ namespace PayrollClient
             cmbEmployment.SelectedIndex = 0;
             cmbEmployment.SelectedIndexChanged += (s, e) =>
             {
-                // При выборе внутреннего совместительства по умолчанию подставляем 0,5 ставки (ст. 345 ТК РБ)
-                if (!_suppressAutoRate && !_editId.HasValue)
-                {
-                    cmbRate.SelectedIndex = cmbEmployment.SelectedIndex == 1 ? 1 : 3;
-                }
+                bool isPartTime = cmbEmployment.SelectedIndex == 1;
+                string prev = cmbRate.Text;
+                cmbRate.Items.Clear();
+                if (isPartTime)
+                    cmbRate.Items.AddRange(new object[] { "0,25", "0,5" });
+                else
+                    cmbRate.Items.AddRange(new object[] { "0,25", "0,5", "0,75", "1,0" });
+
+                int idx = cmbRate.Items.IndexOf(prev);
+                cmbRate.SelectedIndex = idx >= 0 ? idx : (isPartTime ? 1 : cmbRate.Items.Count - 1);
             };
 
             // Налоговые льготы работника (множественный выбор по ст. 209 НК РБ)
