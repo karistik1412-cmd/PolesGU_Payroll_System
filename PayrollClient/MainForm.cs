@@ -346,6 +346,26 @@ namespace PayrollClient
                 _contentPanel,
                 $"Добро пожаловать, {_userRole}!",
                 "Учреждение образования «Полесский государственный университет» — сводная панель системы");
+            _contentPanel.AutoScroll = true;
+
+            Button btnTheme = UiTheme.CreateOutlineButton("Тёмная тема", _contentPanel.ClientSize.Width - 170, 14, 140, 32);
+            bool isDark = false;
+            btnTheme.Click += (s, e) =>
+            {
+                isDark = !isDark;
+                btnTheme.Text = isDark ? "Светлая тема" : "Тёмная тема";
+                _contentPanel.BackColor = isDark ? Color.FromArgb(30, 36, 33) : UiTheme.BackgroundLight;
+                foreach (Control c in _contentPanel.Controls)
+                {
+                    if (c is Panel)
+                    {
+                        c.BackColor = isDark ? Color.FromArgb(42, 50, 46) : Color.White;
+                        c.ForeColor = isDark ? Color.WhiteSmoke : UiTheme.TextPrimary;
+                    }
+                }
+            };
+            _contentPanel.Controls.Add(btnTheme);
+            btnTheme.BringToFront();
 
             string empCount = "—";
             string userCount = "—";
@@ -1195,6 +1215,15 @@ namespace PayrollClient
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+            dgv.CellMouseDown += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
+                {
+                    dgv.ClearSelection();
+                    dgv.CurrentCell = dgv.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                    dgv.Rows[e.RowIndex].Selected = true;
+                }
+            };
             ContextMenuStrip cmsPay = new ContextMenuStrip();
             cmsPay.Items.Add("Листок в Excel", null, (s, e) => btnExportOne.PerformClick());
             dgv.ContextMenuStrip = cmsPay;
