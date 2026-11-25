@@ -1528,12 +1528,12 @@ namespace PayrollClient
 
             btnExportOne.Click += (s, e) =>
             {
-                if (dgv.SelectedRows.Count == 0)
+                DataGridViewRow sel = dgv.CurrentRow ?? (dgv.SelectedRows.Count > 0 ? dgv.SelectedRows[0] : null);
+                if (sel == null)
                 {
                     MessageBox.Show("Выберите строку сотрудника в таблице!", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
-                DataGridViewRow sel = dgv.SelectedRows[0];
                 string empName = sel.Cells["ФИО"] != null && sel.Cells["ФИО"].Value != null ? sel.Cells["ФИО"].Value.ToString() : "Сотрудник";
                 int y = (int)nudYear.Value;
                 int mode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
