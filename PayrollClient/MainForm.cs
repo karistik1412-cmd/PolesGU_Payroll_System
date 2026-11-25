@@ -1316,6 +1316,7 @@ namespace PayrollClient
                     if (dgv.Columns["К выплате, руб."] != null)
                         dgv.Columns["К выплате, руб."].Visible = (mode != 2);
                     dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+                    dgv.PerformLayout();
                 }
             };
 
