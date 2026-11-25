@@ -1622,7 +1622,7 @@ namespace PayrollClient
                                     int r = 8 + i;
                                     if (i < accr.Length)
                                     {
-                                        ws.Cell(r, 1).Value = m;
+                                        ws.Cell(r, 1).Value = cmbMonth.SelectedIndex + 1;
                                         ws.Cell(r, 2).Value = accr[i].Item1;
                                         ws.Cell(r, 3).Value = accr[i].Item2;
                                         ws.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
