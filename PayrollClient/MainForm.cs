@@ -1604,8 +1604,7 @@ namespace PayrollClient
                 }
                 string empName = sel.Cells["ФИО"] != null && sel.Cells["ФИО"].Value != null ? sel.Cells["ФИО"].Value.ToString() : "Сотрудник";
                 int y = (int)nudYear.Value;
-                int mode = cmbHalf.SelectedIndex == 0 ? 1 : 2;
-                string prefix = mode == 1 ? "Листок_аванс" : "Расчетный_листок";
+                string prefix = cmbHalf.SelectedIndex == 0 ? "Листок_1пол" : (cmbHalf.SelectedIndex == 1 ? "Листок_2пол" : "Расчетный_листок_месяц");
 
                 using (var sfd = new SaveFileDialog())
                 {
