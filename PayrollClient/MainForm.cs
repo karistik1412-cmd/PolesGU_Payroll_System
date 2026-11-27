@@ -1671,7 +1671,10 @@ namespace PayrollClient
                                 ws.Range(7, 1, 7, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF4EE");
                                 ws.Range(7, 1, 7, 6).Style.Font.Bold = true;
 
-                                var accr = new[] { ("Оклад", oklad), ("Надбавка", nadb), ("Больничный / Отпуск (Б/О)", bo) };
+                                int halfIdx = cmbHalf.SelectedIndex;
+                                var accr = halfIdx == 0
+                                    ? new[] { ("Аванс (1-я половина)", p1) }
+                                    : new[] { ("Оклад", oklad), ("Надбавка", nadb), ("Больничный / Отпуск (Б/О)", bo) };
                                 var deds = new[] { ("БАНК Аванс (1-я пол.)", avans), ("Пенсионный взнос (ФСЗН 1%)", fszn), ("Подоходный налог (13%)", ndfl), ("Профсоюзный взнос (1%)", prof) };
                                 int maxRows = Math.Max(accr.Length, deds.Length);
                                 for (int i = 0; i < maxRows; i++)
