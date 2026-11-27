@@ -1644,7 +1644,8 @@ namespace PayrollClient
                                 if (itogo == 0m) itogo = avans + doplat;
                                 decimal totalDed = avans + fszn + ndfl + prof;
 
-                                ws.Cell(1, 1).Value = "Расчетный листок";
+                                string modeTitle = cmbHalf.SelectedIndex == 0 ? "1-я половина (аванс)" : (cmbHalf.SelectedIndex == 1 ? "2-я половина (окончательно)" : "Весь месяц");
+                                ws.Cell(1, 1).Value = $"Расчетный листок — {modeTitle}";
                                 ws.Range(1, 1, 1, 6).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                                 ws.Cell(1, 1).Style.Font.Bold = true;
                                 ws.Cell(1, 1).Style.Font.FontSize = 14;
