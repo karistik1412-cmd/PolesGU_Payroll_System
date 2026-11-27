@@ -550,7 +550,10 @@ namespace PayrollClient
                 using (Form f = new Form { Text = "Изменение стажа", Size = new Size(320, 160), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false })
                 {
                     Label lbl = new Label { Text = $"Стаж (лет) для: {empName}", Location = new Point(16, 16), AutoSize = true };
-                    NumericUpDown nud = new NumericUpDown { Location = new Point(16, 44), Width = 120, Minimum = 0, Maximum = 50, Value = 1 };
+                    decimal curExp = 1;
+                    if (dgv.Columns["Стаж, лет"] != null && sel.Cells["Стаж, лет"].Value != null)
+                        decimal.TryParse(sel.Cells["Стаж, лет"].Value.ToString(), out curExp);
+                    NumericUpDown nud = new NumericUpDown { Location = new Point(16, 44), Width = 120, Minimum = 0, Maximum = 50, Value = Math.Min(50, Math.Max(0, curExp)) };
                     Button ok = UiTheme.CreatePrimaryButton("Сохранить", 160, 42, 120, 30);
                     ok.Click += (s2, e2) => { f.DialogResult = DialogResult.OK; f.Close(); };
                     f.Controls.AddRange(new Control[] { lbl, nud, ok });
@@ -1207,6 +1210,8 @@ namespace PayrollClient
             btnExportOne.Enabled = false;
 
             toolbar.Controls.AddRange(new Control[] { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne });
+            TextBox txtSearchPay = new TextBox { Location = new Point(1160, 12), Width = 140, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            toolbar.Controls.Add(txtSearchPay);
 
             Label lblTotals;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblTotals);

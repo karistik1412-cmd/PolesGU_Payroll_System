@@ -178,7 +178,7 @@ namespace PayrollServer.Network
                 int id, yrs;
                 if (parts.Length == 2 && int.TryParse(parts[0], out id) && int.TryParse(parts[1], out yrs))
                 {
-                    using (var conn = PayrollServer.Database.DbConnection.GetConnection())
+                    using (var conn = new PayrollServer.Database.DbConnection().GetConnection())
                     {
                         conn.Open();
                         using (var cmd = new System.Data.SqlClient.SqlCommand(
