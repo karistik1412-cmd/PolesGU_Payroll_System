@@ -1700,8 +1700,8 @@ namespace PayrollClient
                                     }
                                 }
 
-                                decimal dispGross = halfIdx == 0 ? avans : gross;
-                                decimal dispDed = halfIdx == 0 ? 0m : (halfIdx == 1 ? (avans + fszn + ndfl + prof) : (fszn + ndfl + prof));
+                                decimal dispGross = halfIdx == 0 ? avans : (halfIdx == 1 ? Math.Max(0m, gross - avans) : gross);
+                                decimal dispDed = halfIdx == 0 ? 0m : (fszn + ndfl + prof);
                                 int itogRow = 8 + maxRows;
                                 ws.Cell(itogRow, 2).Value = "Итого начислено";
                                 ws.Cell(itogRow, 3).Value = dispGross;
