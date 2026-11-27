@@ -281,10 +281,10 @@ namespace PayrollClient
             cmbChildrenBenefit.Items.AddRange(new object[] { "0", "1", "2", "3", "4" });
             cmbChildrenBenefit.SelectedIndex = 0;
 
-            btnCancel = UiTheme.CreateOutlineButton("Отмена", x + w - 232, 594, 108, 36);
+            btnCancel = UiTheme.CreateOutlineButton("Отмена", this.ClientSize.Width - 262, 622, 108, 36);
             btnCancel.DialogResult = DialogResult.Cancel;
 
-            btnSave = UiTheme.CreatePrimaryButton(btnText, x + w - 116, 594, 116, 36);
+            btnSave = UiTheme.CreatePrimaryButton(btnText, this.ClientSize.Width - 146, 622, 116, 36);
             btnSave.Click += BtnSave_Click;
 
             this.ClientSize = new Size(540, 680);

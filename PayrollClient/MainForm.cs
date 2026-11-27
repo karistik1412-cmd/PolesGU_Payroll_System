@@ -2458,7 +2458,7 @@ namespace PayrollClient
                             $"Всего пользователей: {dt.Rows.Count}  |  " +
                             $"Администраторов: {admins}  |  " +
                             $"Бухгалтеров: {accountants}  |  " +
-                            $"Сотрудников: {staff}";
+                            $"Экономистов: {staff}";
                     }
                     else
                     {
