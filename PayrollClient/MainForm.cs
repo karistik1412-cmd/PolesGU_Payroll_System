@@ -1240,6 +1240,20 @@ namespace PayrollClient
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+            txtSearchPay.TextChanged += (s, e) =>
+            {
+                if (dgv.DataSource == null || dgv.Columns["ФИО"] == null) return;
+                string q = txtSearchPay.Text.Trim().ToLower();
+                CurrencyManager cm = (CurrencyManager)BindingContext[dgv.DataSource];
+                cm.SuspendBinding();
+                foreach (DataGridViewRow row in dgv.Rows)
+                {
+                    if (row.IsNewRow) continue;
+                    string fio = (row.Cells["ФИО"].Value ?? "").ToString().ToLower();
+                    row.Visible = string.IsNullOrEmpty(q) || fio.Contains(q);
+                }
+                cm.ResumeBinding();
+            };
             dgv.CellMouseDown += (s, e) =>
             {
                 if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
