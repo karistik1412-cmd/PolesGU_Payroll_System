@@ -557,7 +557,7 @@ namespace PayrollClient
                     if (f.ShowDialog() == DialogResult.OK)
                     {
                         new ServerConnection().SendRequest(new NetworkMessage { Command = "UPDATE_EXPERIENCE", Data = $"{empId}|{(int)nud.Value}" });
-                        loadData();
+                        LoadEmployeesScreen();
                     }
                 }
             });
