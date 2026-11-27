@@ -47,7 +47,7 @@ namespace PayrollClient
         {
             // Поддерживаем формат "Роль|UserID|Логин" и прежний "Роль"
             string[] parts = (authData ?? string.Empty).Split('|');
-            _userRole = parts.Length > 0 ? parts[0] : "Сотрудник";
+            _userRole = parts.Length > 0 ? parts[0] : "Экономист";
             if (parts.Length > 1) int.TryParse(parts[1], out _currentUserId);
             if (parts.Length > 2) _currentUserLogin = parts[2];
 
@@ -447,7 +447,7 @@ namespace PayrollClient
             };
 
             infoCard.Controls.AddRange(new Control[] { lblInfoTitle, lblLine1, lblLine2, lblLine3 });
-            if (_userRole == "Бухгалтер" || _userRole == "Администратор")
+            if (_userRole == "Бухгалтер" || _userRole == "Администратор" || _userRole == "Экономист")
                 LoadChartsScreen(true);
         }
 
@@ -541,6 +541,26 @@ namespace PayrollClient
             };
             ContextMenuStrip cmsEmp = new ContextMenuStrip();
             if (canManage) cmsEmp.Items.Add("Редактировать", null, (s, e) => btnEditEmp.PerformClick());
+            if (canManage) cmsEmp.Items.Add("Изменить стаж (лет)", null, (s, e) =>
+            {
+                DataGridViewRow sel = dgv.CurrentRow ?? (dgv.SelectedRows.Count > 0 ? dgv.SelectedRows[0] : null);
+                if (sel == null) return;
+                int empId = Convert.ToInt32(sel.Cells["EmployeeID"].Value);
+                string empName = sel.Cells["ФИО"].Value.ToString();
+                using (Form f = new Form { Text = "Изменение стажа", Size = new Size(320, 160), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false })
+                {
+                    Label lbl = new Label { Text = $"Стаж (лет) для: {empName}", Location = new Point(16, 16), AutoSize = true };
+                    NumericUpDown nud = new NumericUpDown { Location = new Point(16, 44), Width = 120, Minimum = 0, Maximum = 50, Value = 1 };
+                    Button ok = UiTheme.CreatePrimaryButton("Сохранить", 160, 42, 120, 30);
+                    ok.Click += (s2, e2) => { f.DialogResult = DialogResult.OK; f.Close(); };
+                    f.Controls.AddRange(new Control[] { lbl, nud, ok });
+                    if (f.ShowDialog() == DialogResult.OK)
+                    {
+                        new ServerConnection().SendRequest(new NetworkMessage { Command = "UPDATE_EXPERIENCE", Data = $"{empId}|{(int)nud.Value}" });
+                        loadData();
+                    }
+                }
+            });
             cmsEmp.Items.Add("Карточка сотрудника", null, (s, e) => btnDetails.PerformClick());
             if (canManage) cmsEmp.Items.Add("Уволить", null, (s, e) => btnDeleteEmp.PerformClick());
             dgv.ContextMenuStrip = cmsEmp;
