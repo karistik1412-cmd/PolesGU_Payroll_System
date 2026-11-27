@@ -1710,11 +1710,24 @@ namespace PayrollClient
                                 ws.Range(itogRow, 1, itogRow, 6).Style.Font.Bold = true;
 
                                 int payRow = itogRow + 1;
-                                ws.Cell(payRow, 2).Value = "К выплате (2-я половина)";
-                                ws.Cell(payRow, 3).Value = doplat;
-                                ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
-                                ws.Cell(payRow, 5).Value = "Итого выплат за месяц";
-                                ws.Cell(payRow, 6).Value = itogo;
+                                if (halfIdx == 0)
+                                {
+                                    ws.Cell(payRow, 2).Value = "К выплате (1-я половина)";
+                                    ws.Cell(payRow, 3).Value = avans;
+                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                }
+                                else if (halfIdx == 1)
+                                {
+                                    ws.Cell(payRow, 2).Value = "К выплате (2-я половина)";
+                                    ws.Cell(payRow, 3).Value = doplat;
+                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                }
+                                else
+                                {
+                                    ws.Cell(payRow, 2).Value = "Итого выплат за месяц";
+                                    ws.Cell(payRow, 3).Value = itogo;
+                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                }
                                 ws.Cell(payRow, 6).Style.NumberFormat.Format = "#,##0.00";
                                 ws.Range(payRow, 1, payRow, 6).Style.Font.Bold = true;
 
