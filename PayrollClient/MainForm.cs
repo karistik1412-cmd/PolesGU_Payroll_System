@@ -802,14 +802,6 @@ namespace PayrollClient
             Button btnClear = UiTheme.CreateDangerButton("Сбросить", 655, 8, 108);
             Label lblSearchTs = new Label { Text = "Поиск:", Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, Location = new Point(776, 16), AutoSize = true };
             TextBox txtSearchTs = new TextBox { Location = new Point(828, 12), Width = 180, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
-            txtSearchTs.TextChanged += (s, e) =>
-            {
-                DataTable dtTs = dgv.DataSource as DataTable;
-                if (dtTs != null && dtTs.Columns.Contains("ФИО"))
-                    dtTs.DefaultView.RowFilter = string.IsNullOrWhiteSpace(txtSearchTs.Text)
-                        ? ""
-                        : $"[ФИО] LIKE '%{txtSearchTs.Text.Trim().Replace("'", "''")}%'";
-            };
 
             toolbar.Controls.Add(btnImport);
             toolbar.Controls.Add(btnSaveManual);
