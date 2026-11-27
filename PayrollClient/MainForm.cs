@@ -1673,9 +1673,13 @@ namespace PayrollClient
 
                                 int halfIdx = cmbHalf.SelectedIndex;
                                 var accr = halfIdx == 0
-                                    ? new[] { ("Аванс (1-я половина)", p1) }
+                                    ? new[] { ("Аванс (1-я половина)", avans) }
                                     : new[] { ("Оклад", oklad), ("Надбавка", nadb), ("Больничный / Отпуск (Б/О)", bo) };
-                                var deds = new[] { ("БАНК Аванс (1-я пол.)", avans), ("Пенсионный взнос (ФСЗН 1%)", fszn), ("Подоходный налог (13%)", ndfl), ("Профсоюзный взнос (1%)", prof) };
+                                var deds = halfIdx == 0
+                                    ? new (string, decimal)[0]
+                                    : (halfIdx == 1
+                                        ? new[] { ("БАНК Аванс (1-я пол.)", avans), ("Пенсионный взнос (ФСЗН 1%)", fszn), ("Подоходный налог (13%)", ndfl), ("Профсоюзный взнос (1%)", prof) }
+                                        : new[] { ("Пенсионный взнос (ФСЗН 1%)", fszn), ("Подоходный налог (13%)", ndfl), ("Профсоюзный взнос (1%)", prof) });
                                 int maxRows = Math.Max(accr.Length, deds.Length);
                                 for (int i = 0; i < maxRows; i++)
                                 {
