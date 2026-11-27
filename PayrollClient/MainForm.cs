@@ -806,6 +806,8 @@ namespace PayrollClient
             toolbar.Controls.Add(btnImport);
             toolbar.Controls.Add(btnSaveManual);
             toolbar.Controls.Add(btnClear);
+            toolbar.Controls.Add(lblSearchTs);
+            toolbar.Controls.Add(txtSearchTs);
 
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
