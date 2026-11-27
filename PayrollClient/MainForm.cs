@@ -806,6 +806,8 @@ namespace PayrollClient
             toolbar.Controls.Add(btnImport);
             toolbar.Controls.Add(btnSaveManual);
             toolbar.Controls.Add(btnClear);
+            toolbar.Controls.Add(lblSearchTs);
+            toolbar.Controls.Add(txtSearchTs);
 
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
@@ -815,6 +817,20 @@ namespace PayrollClient
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: false);
+            txtSearchTs.TextChanged += (s, e) =>
+            {
+                if (dgv.DataSource == null || dgv.Columns["ФИО"] == null) return;
+                string q = txtSearchTs.Text.Trim().ToLower();
+                CurrencyManager cm = (CurrencyManager)BindingContext[dgv.DataSource];
+                cm.SuspendBinding();
+                foreach (DataGridViewRow row in dgv.Rows)
+                {
+                    if (row.IsNewRow) continue;
+                    string fio = (row.Cells["ФИО"].Value ?? "").ToString().ToLower();
+                    row.Visible = string.IsNullOrEmpty(q) || fio.Contains(q);
+                }
+                cm.ResumeBinding();
+            };
             dgv.DataError += (s, ev) =>
             {
                 MessageBox.Show("Введите корректное числовое значение для дней или часов.",
