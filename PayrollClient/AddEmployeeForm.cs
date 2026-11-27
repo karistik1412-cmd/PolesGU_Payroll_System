@@ -159,7 +159,7 @@ namespace PayrollClient
 
             Font labelFont = new Font("Segoe UI", 9f, FontStyle.Bold);
             int x = 24;
-            int w = 412;
+            int w = 492;
 
             // ФИО
             Label lblName = new Label { Text = "ФИО сотрудника", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 68), AutoSize = true };

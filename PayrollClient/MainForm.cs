@@ -800,6 +800,10 @@ namespace PayrollClient
             Button btnImport = UiTheme.CreatePrimaryButton("Импорт из Excel", 322, 8, 155);
             Button btnSaveManual = UiTheme.CreateOutlineButton("Сохранить правки", 487, 8, 158);
             Button btnClear = UiTheme.CreateDangerButton("Сбросить", 655, 8, 108);
+            Label lblSearchTs = new Label { Text = "Поиск:", Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, Location = new Point(776, 16), AutoSize = true };
+            TextBox txtSearchTs = new TextBox { Location = new Point(828, 12), Width = 180, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            toolbar.Controls.Add(lblSearchTs);
+            toolbar.Controls.Add(txtSearchTs);
 
             toolbar.Controls.Add(btnImport);
             toolbar.Controls.Add(btnSaveManual);
@@ -1210,7 +1214,7 @@ namespace PayrollClient
             btnExportOne.Enabled = false;
 
             toolbar.Controls.AddRange(new Control[] { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne });
-            TextBox txtSearchPay = new TextBox { Location = new Point(1160, 12), Width = 140, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            TextBox txtSearchPay = new TextBox { Location = new Point(1154, 12), Width = 105, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
             toolbar.Controls.Add(txtSearchPay);
 
             Label lblTotals;
@@ -2431,6 +2435,12 @@ namespace PayrollClient
                     if (response.IsSuccess)
                     {
                         DataTable dt = JsonConvert.DeserializeObject<DataTable>(response.Data);
+                        if (dt != null && dt.Columns.Contains("Роль"))
+                        {
+                            foreach (DataRow row in dt.Rows)
+                                if (row["Роль"] != null && row["Роль"].ToString() == "Сотрудник")
+                                    row["Роль"] = "Экономист";
+                        }
                         dgv.DataSource = dt;
                         if (dgv.Columns["UserID"] != null) dgv.Columns["UserID"].Visible = false;
 
