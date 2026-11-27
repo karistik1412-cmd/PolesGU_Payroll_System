@@ -1201,18 +1201,18 @@ namespace PayrollClient
             cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : (_selectedHalfMode == 3 ? 2 : 1);
             toolbar.Controls.Add(cmbHalf);
 
-            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 558, 8, 108);
-            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 672, 8, 124);
-            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 802, 8, 124);
-            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 932, 8, 88);
-            Button btnExportOne = UiTheme.CreateOutlineButton("Листок в Excel", 1026, 8, 124);
+            Button btnCalculate = UiTheme.CreatePrimaryButton("Рассчитать", 520, 8, 92);
+            Button btnImportTs = UiTheme.CreateAccentButton("Импорт табеля", 618, 8, 112);
+            Button btnSave = UiTheme.CreateOutlineButton("Сохранить в БД", 736, 8, 108);
+            Button btnExport = UiTheme.CreateOutlineButton("В Excel", 850, 8, 72);
+            Button btnExportOne = UiTheme.CreateOutlineButton("Листок в Excel", 928, 8, 108);
 
             btnSave.Enabled = false;
             btnExport.Enabled = false;
             btnExportOne.Enabled = false;
 
             toolbar.Controls.AddRange(new Control[] { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne });
-            TextBox txtSearchPay = new TextBox { Location = new Point(1154, 12), Width = 105, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            TextBox txtSearchPay = new TextBox { Location = new Point(1042, 12), Width = 100, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
             toolbar.Controls.Add(txtSearchPay);
 
             Label lblTotals;
