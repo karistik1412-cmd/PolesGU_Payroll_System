@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data;
 using System.Globalization;
 using System.Net;
@@ -171,6 +171,32 @@ namespace PayrollServer.Network
                 response.IsSuccess = ok;
                 response.Data = ok ? "Сотрудник уволен" : "Ошибка";
                 if (!ok) response.ErrorMessage = "Сотрудник не найден.";
+            }
+            else if (request.Command == "UPDATE_EXPERIENCE")
+            {
+                string[] parts = (request.Data ?? "").Split('|');
+                int id, yrs;
+                if (parts.Length == 2 && int.TryParse(parts[0], out id) && int.TryParse(parts[1], out yrs))
+                {
+                    using (var conn = PayrollServer.Database.DbConnection.GetConnection())
+                    {
+                        conn.Open();
+                        using (var cmd = new System.Data.SqlClient.SqlCommand(
+                            "UPDATE Employees SET HireDate = DATEADD(YEAR, -@y, GETDATE()) WHERE EmployeeID = @id", conn))
+                        {
+                            cmd.Parameters.AddWithValue("@y", yrs);
+                            cmd.Parameters.AddWithValue("@id", id);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    response.IsSuccess = true;
+                    response.Data = "OK";
+                }
+                else
+                {
+                    response.IsSuccess = false;
+                    response.ErrorMessage = "Некорректные параметры стажа";
+                }
             }
             else if (request.Command == "UPDATE_EMPLOYEE")
             {
