@@ -1700,12 +1700,14 @@ namespace PayrollClient
                                     }
                                 }
 
+                                decimal dispGross = halfIdx == 0 ? avans : gross;
+                                decimal dispDed = halfIdx == 0 ? 0m : (halfIdx == 1 ? (avans + fszn + ndfl + prof) : (fszn + ndfl + prof));
                                 int itogRow = 8 + maxRows;
                                 ws.Cell(itogRow, 2).Value = "Итого начислено";
-                                ws.Cell(itogRow, 3).Value = gross;
+                                ws.Cell(itogRow, 3).Value = dispGross;
                                 ws.Cell(itogRow, 3).Style.NumberFormat.Format = "#,##0.00";
                                 ws.Cell(itogRow, 5).Value = "Итого удержано";
-                                ws.Cell(itogRow, 6).Value = totalDed;
+                                ws.Cell(itogRow, 6).Value = dispDed;
                                 ws.Cell(itogRow, 6).Style.NumberFormat.Format = "#,##0.00";
                                 ws.Range(itogRow, 1, itogRow, 6).Style.Font.Bold = true;
 
