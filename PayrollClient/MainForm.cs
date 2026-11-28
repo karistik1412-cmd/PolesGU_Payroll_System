@@ -11,6 +11,7 @@ using ClosedXML.Excel;
 using Newtonsoft.Json;
 using PayrollClient.Network;
 using PayrollClient.Services;
+using Localization = PayrollClient.Services.Localization;
 
 namespace PayrollClient
 {

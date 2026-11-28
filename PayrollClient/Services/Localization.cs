@@ -325,7 +325,7 @@ namespace PayrollClient.Services
             "slip.taxNote2", "Налог удерживается в полном объёме при окончательном расчёте: в листке за 2-ю половину он относится ко всему месяцу, а не к половине.",
             "slip.saved", "Расчётный листок сотрудника сохранён!",
             "slip.error", "Ошибка экспорта: ",
-            "slip.selectRow", "Выберите строку сотрудника в таблице!",
+            "slip.selectRow", "Выберите строку сотрудника в таблице!"
         );
 
         private static readonly Dictionary<string, string> En = Make(
@@ -523,7 +523,7 @@ namespace PayrollClient.Services
             "slip.taxNote2", "The tax is withheld in full at the final settlement: in the 2nd-half payslip it refers to the whole month, not to the half.",
             "slip.saved", "Employee pay slip saved!",
             "slip.error", "Export error: ",
-            "slip.selectRow", "Select an employee row in the table!",
+            "slip.selectRow", "Select an employee row in the table!"
         );
 
         private static readonly Dictionary<string, string> Be = Make(
@@ -721,7 +721,7 @@ namespace PayrollClient.Services
             "slip.taxNote2", "Падатак утрымліваецца ў поўным аб'ёме пры канчатковым разліку: у лістку за 2-ю палову ён адносіцца да ўсяго месяца, а не да паловы.",
             "slip.saved", "Разліковы лісток супрацоўніка захаваны!",
             "slip.error", "Памылка экспарту: ",
-            "slip.selectRow", "Выберыце радок супрацоўніка ў табліцы!",
+            "slip.selectRow", "Выберыце радок супрацоўніка ў табліцы!"
         );
     }
 }

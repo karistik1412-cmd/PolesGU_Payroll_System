@@ -113,6 +113,7 @@
     <Compile Include="Services\ExcelTimesheetService.cs" />
     <Compile Include="Services\UiTheme.cs" />
     <Compile Include="Services\ToolbarLayout.cs" />
+    <Compile Include="Services\AppSettingsStore.cs" />
     <Compile Include="Services\Localization.cs" />
     <EmbeddedResource Include="LoginForm.resx">
       <DependentUpon>LoginForm.cs</DependentUpon>
