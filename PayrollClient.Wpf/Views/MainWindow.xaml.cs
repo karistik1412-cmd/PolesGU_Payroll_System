@@ -97,7 +97,6 @@ namespace PayrollClient.Views
             navPayroll.Visibility = canPayroll ? Visibility.Visible : Visibility.Collapsed;
             navUsers.Visibility = _userRole == "Администратор" ? Visibility.Visible : Visibility.Collapsed;
 
-            lblMonthCaption.Text = Localization.T("common.month") + ":";
             lblYearCaption.Text = Localization.T("common.year") + ":";
             lblSearch.Text = Localization.T("common.search");
         }
@@ -169,9 +168,19 @@ namespace PayrollClient.Views
         private void ResetToolbar(bool showSearch = true, bool showPeriod = true)
         {
             actionBar.Children.Clear();
+
+            // В панели одна колонка под поля: на «Главной» это период,
+            // на «Сотрудниках» — поиск. Кнопки всегда стоят под ней.
             periodPanel.Visibility = showPeriod ? Visibility.Visible : Visibility.Collapsed;
-            txtSearch.Visibility = showSearch ? Visibility.Visible : Visibility.Collapsed;
-            lblSearch.Visibility = showSearch ? Visibility.Visible : Visibility.Collapsed;
+            searchPanel.Visibility = showSearch ? Visibility.Visible : Visibility.Collapsed;
+
+            if (showPeriod) lblMonthCaption.Text = Localization.T("common.month") + ":";
+            else if (showSearch) lblMonthCaption.Text = Localization.T("common.search");
+            else lblMonthCaption.Text = string.Empty;
+
+            lblMonthCaption.Visibility = (showPeriod || showSearch)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
 
         private Border CreateCard(string title, string subtitle, out StackPanel body)
@@ -233,7 +242,6 @@ namespace PayrollClient.Views
             content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // справка
             content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // язык
             content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // графики
-            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // итог
 
             // --- 1. Показатели ---
             Grid kpi = new Grid { Margin = new Thickness(0, 0, 0, 6) };
@@ -366,15 +374,15 @@ namespace PayrollClient.Views
             chartsGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(330) });
             chartsGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(330) });
 
-            DepartmentBarChart deptChart;
-            DoughnutChart structureChart;
-            TrendChart trendChart;
-            HoursChart hoursChart;
+            DepartmentBarChart deptChart = new DepartmentBarChart();
+            DoughnutChart structureChart = new DoughnutChart();
+            TrendChart trendChart = new TrendChart();
+            HoursChart hoursChart = new HoursChart();
 
-            Border card1 = CreateChartCard(Localization.T("chart.title1"), out deptChart);
-            Border card2 = CreateChartCard(Localization.T("chart.title2"), out structureChart);
-            Border card3 = CreateChartCard(Localization.T("chart.title3"), out trendChart);
-            Border card4 = CreateChartCard(Localization.T("chart.title4"), out hoursChart);
+            Border card1 = CreateChartCard(Localization.T("chart.title1"), deptChart);
+            Border card2 = CreateChartCard(Localization.T("chart.title2"), structureChart);
+            Border card3 = CreateChartCard(Localization.T("chart.title3"), trendChart);
+            Border card4 = CreateChartCard(Localization.T("chart.title4"), hoursChart);
 
             Grid.SetRow(card1, 0); Grid.SetColumn(card1, 0);
             Grid.SetRow(card2, 0); Grid.SetColumn(card2, 1);
@@ -387,28 +395,12 @@ namespace PayrollClient.Views
             Grid.SetRow(chartsGrid, 3);
             content.Children.Add(chartsGrid);
 
-            // --- 5. Итоговая строка ПОД графиками ---
-            Border footerCard = new Border
-            {
-                Style = (Style)Application.Current.Resources["Card"],
-                Margin = new Thickness(6, 6, 6, 6),
-                Padding = new Thickness(18, 12, 18, 12)
-            };
-            TextBlock footerText = new TextBlock
-            {
-                FontSize = 12,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Res("TextPrimary"),
-                TextWrapping = TextWrapping.Wrap
-            };
-            footerCard.Child = footerText;
-            Grid.SetRow(footerCard, 4);
-            content.Children.Add(footerCard);
-
             scroll.Content = content;
             pageHost.Children.Add(scroll);
 
-            LoadCharts(deptChart, structureChart, trendChart, hoursChart, footerText);
+            // Итоговая строка одна — закреплённая внизу окна (lblFooter).
+            // Второй такой же строки под графиками больше нет.
+            LoadCharts(deptChart, structureChart, trendChart, hoursChart, lblFooter);
         }
 
         private void AddStatCard(Grid host, int column, string title, string value, string caption)
@@ -445,44 +437,36 @@ namespace PayrollClient.Views
             host.Children.Add(card);
         }
 
-        private Border CreateChartCard(string title, out DepartmentBarChart chart)
+        // Карточка графика: подпись сверху, сам график занимает всё оставшееся
+        // место. Высоту задаём явно — StackPanel не растягивает дочерние элементы,
+        // из-за чего Canvas получал нулевую высоту и ничего не рисовал.
+        private Border CreateChartCard(string title, FrameworkElement chart)
         {
-            StackPanel body;
-            Border card = CreateCard(title, null, out body);
-            DepartmentBarChart typed = new DepartmentBarChart();
-            body.Children.Add(typed);
-            chart = typed;
-            card.Margin = new Thickness(6);
-            return card;
-        }
+            Border card = new Border
+            {
+                Style = (Style)Application.Current.Resources["Card"],
+                Margin = new Thickness(6)
+            };
 
-        private Border CreateChartCard(string title, out DoughnutChart chart)
-        {
-            StackPanel body;
-            Border card = CreateCard(title, null, out body);
-            DoughnutChart typed = new DoughnutChart();
-            body.Children.Add(typed);
-            chart = typed;
-            return card;
-        }
+            Grid inner = new Grid();
+            inner.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            inner.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        private Border CreateChartCard(string title, out TrendChart chart)
-        {
-            StackPanel body;
-            Border card = CreateCard(title, null, out body);
-            TrendChart typed = new TrendChart();
-            body.Children.Add(typed);
-            chart = typed;
-            return card;
-        }
+            TextBlock titleBlock = new TextBlock
+            {
+                Text = title,
+                Style = (Style)Application.Current.Resources["CardTitle"],
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(titleBlock, 0);
+            inner.Children.Add(titleBlock);
 
-        private Border CreateChartCard(string title, out HoursChart chart)
-        {
-            StackPanel body;
-            Border card = CreateCard(title, null, out body);
-            HoursChart typed = new HoursChart();
-            body.Children.Add(typed);
-            chart = typed;
+            chart.Height = double.NaN;
+            chart.Margin = Thickness.Empty;
+            Grid.SetRow(chart, 1);
+            inner.Children.Add(chart);
+
+            card.Child = inner;
             return card;
         }
 
@@ -516,6 +500,10 @@ namespace PayrollClient.Views
                 AnalyticsDataDto data = JsonConvert.DeserializeObject<AnalyticsDataDto>(response.Data);
                 if (data == null)
                 {
+                    deptChart.ShowEmpty(Localization.T("chart.emptyMonth"));
+                    structureChart.ShowEmpty(Localization.T("chart.emptyMonth"));
+                    trendChart.ShowEmpty(Localization.T("chart.emptyYear"));
+                    hoursChart.ShowEmpty(Localization.T("chart.emptyEmployees"));
                     footerText.Text = Localization.T("chart.noData");
                     return;
                 }
@@ -631,7 +619,6 @@ namespace PayrollClient.Views
                         .Replace("|  Часы", string.Format("|  Часы ({0:0.#}/{1:0.#})", sumHours, sumNorm));
                 }
                 footerText.Text = _homeFooter;
-                lblFooter.Text = _homeFooter;
             }
             catch (Exception ex)
             {
@@ -640,7 +627,6 @@ namespace PayrollClient.Views
                 trendChart.ShowEmpty(Localization.T("chart.emptyYear"));
                 hoursChart.ShowEmpty(Localization.T("chart.emptyEmployees"));
                 footerText.Text = Localization.T("common.errorNetwork") + ex.Message;
-                lblFooter.Text = footerText.Text;
             }
         }
 
@@ -750,6 +736,11 @@ namespace PayrollClient.Views
             BuildEmployeeColumns(grid);
 
             grid.SelectionChanged += (s, e) => UpdateEmployeeFooter();
+            grid.ContextMenu = BuildEmployeeContextMenu(canManage);
+
+            // ПКМ по строке: сначала выделяем её, иначе действия меню
+            // относятся к предыдущей выбранной строке.
+            grid.PreviewMouseRightButtonDown += OnGridRightButtonDown;
             card.Child = grid;
             pageHost.Children.Add(card);
 
@@ -781,6 +772,64 @@ namespace PayrollClient.Views
             {
                 lblFooter.Text = Localization.T("common.errorNetwork") + ex.Message;
             }
+        }
+
+        // Контекстное меню таблицы (ПКМ по строке сотрудника).
+        // Пункты те же, что и кнопки на панели, поэтому поведение одинаково.
+        private ContextMenu BuildEmployeeContextMenu(bool canManage)
+        {
+            ContextMenu menu = new ContextMenu();
+
+            if (canManage)
+            {
+                menu.Items.Add(CreateMenuItem(Localization.T("emp.edit"), OnEditEmployee));
+                menu.Items.Add(CreateMenuItem(Localization.T("emp.card"), OnShowEmployeeCard));
+                menu.Items.Add(new Separator());
+                menu.Items.Add(CreateMenuItem(Localization.T("emp.fire"), OnDeleteEmployee, danger: true));
+                menu.Items.Add(new Separator());
+            }
+            else
+            {
+                menu.Items.Add(CreateMenuItem(Localization.T("emp.card"), OnShowEmployeeCard));
+                menu.Items.Add(new Separator());
+            }
+
+            menu.Items.Add(CreateMenuItem(Localization.T("common.refresh"), (s, e) => LoadEmployees()));
+            return menu;
+        }
+
+        private static MenuItem CreateMenuItem(string header, RoutedEventHandler click, bool danger = false)
+        {
+            MenuItem item = new MenuItem { Header = header, Padding = new Thickness(10, 4, 16, 4) };
+            if (click != null) item.Click += click;
+            if (danger) item.Foreground = Res("DangerText");
+            return item;
+        }
+
+        // ПКМ по строке делает её выделенной — иначе меню действует на чужую запись
+        private void OnGridRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            DataGrid grid = sender as DataGrid;
+            if (grid == null || grid.Items.Count == 0) return;
+
+            System.Windows.Controls.DataGridRow row = FindParentRow(e.OriginalSource as DependencyObject);
+            if (row == null) return; // клик по заголовку или пустому месту
+
+            row.IsSelected = true;
+            grid.CurrentItem = row.Item;
+            row.Focus();
+        }
+
+        // Поиск строки таблицы выше по дереву элементов
+        private static System.Windows.Controls.DataGridRow FindParentRow(DependencyObject source)
+        {
+            while (source != null)
+            {
+                System.Windows.Controls.DataGridRow row = source as System.Windows.Controls.DataGridRow;
+                if (row != null) return row;
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return null;
         }
 
         private void BuildEmployeeColumns(DataGrid grid)
