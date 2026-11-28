@@ -116,6 +116,22 @@ namespace PayrollClient.Converters
         }
     }
 
+    // Количество (дни, часы): без лишних нулей — «21», «151,2»
+    public class NumberConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null) return string.Empty;
+            decimal d;
+            return NumberText.TryParse(value, out d) ? d.ToString("0.##") : value.ToString();
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return value;
+        }
+    }
+
     // Ставка: 1 -> «1», 0,5 -> «0,5»
     public class RateConverter : IValueConverter
     {

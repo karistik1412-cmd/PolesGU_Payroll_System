@@ -115,6 +115,7 @@ namespace PayrollClient.Views
 
             lblYearCaption.Text = Localization.T("common.year") + ":";
             lblSearch.Text = Localization.T("common.search");
+            lblSearch.Visibility = Visibility.Collapsed; // подпись выводится в общей колонке
         }
 
         private void BuildPeriodSelectors()
@@ -194,10 +195,26 @@ namespace PayrollClient.Views
             periodPanel.Visibility = showPeriod ? Visibility.Visible : Visibility.Collapsed;
             searchPanel.Visibility = showSearch ? Visibility.Visible : Visibility.Collapsed;
 
-            // У поиска собственная подпись («Поиск:»), поэтому общая подпись
-            // нужна только для периода — иначе выходило «Поиск: Поиск:».
-            lblMonthCaption.Text = showPeriod ? Localization.T("common.month") + ":" : string.Empty;
-            lblMonthCaption.Visibility = showPeriod ? Visibility.Visible : Visibility.Collapsed;
+            // Слева — подпись того, что стоит первым: период («Месяц:»), а если
+            // периода нет — поиск («Поиск:»). У самого поиска подпись своя,
+            // поэтому она скрыта, когда подпись уже стоит слева.
+            if (showPeriod)
+            {
+                lblMonthCaption.Text = Localization.T("common.month") + ":";
+                lblMonthCaption.Visibility = Visibility.Visible;
+                lblSearch.Visibility = Visibility.Collapsed;   // подпись поиска не нужна
+            }
+            else if (showSearch)
+            {
+                lblMonthCaption.Text = Localization.T("common.search");
+                lblMonthCaption.Visibility = Visibility.Visible;
+                lblSearch.Visibility = Visibility.Collapsed;   // чтобы не было «Поиск: Поиск:»
+            }
+            else
+            {
+                lblMonthCaption.Text = string.Empty;
+                lblMonthCaption.Visibility = Visibility.Collapsed;
+            }
         }
 
         private Border CreateCard(string title, string subtitle, out StackPanel body)
@@ -943,45 +960,48 @@ namespace PayrollClient.Views
                                       bool useTerm = false, string converter = null, string dateFormat = null,
                                       bool numeric = false)
         {
-            DataGridTextColumn column = new DataGridTextColumn
-            {
-                Header = Localization.T("col." + field),
-                Binding = new System.Windows.Data.Binding("[" + field + "]"),
-                Width = new DataGridLength(width, DataGridLengthUnitType.Star)
-            };
+            // Имя колонки может содержать запятую и точку («Отработано, дн.»).
+            // В пути привязки WPF запятая — разделитель аргументов, поэтому
+            // без экранирования такая колонка оставалась пустой.
+            string path = "[" + field.Replace(",", "\\,") + "]";
 
-            Style cellStyle = new Style(typeof(TextBlock));
-            cellStyle.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
-            cellStyle.Setters.Add(new Setter(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center));
-            cellStyle.Setters.Add(new Setter(TextBlock.MarginProperty, new Thickness(0, 0, 6, 0)));
+            System.Windows.Data.Binding binding = new System.Windows.Data.Binding(path);
+            Style cellStyle = NumericStyle();
 
             if (useTerm)
             {
-                System.Windows.Data.Binding binding = new System.Windows.Data.Binding("[" + field + "]");
                 binding.Converter = (System.Windows.Data.IValueConverter)Application.Current.Resources["Term"];
-                column.Binding = binding;
             }
             else if (converter != null)
             {
-                System.Windows.Data.Binding binding = new System.Windows.Data.Binding("[" + field + "]");
-                binding.Converter = (System.Windows.Data.IValueConverter)Application.Current.Resources["Rate"];
-                column.Binding = binding;
+                binding.Converter = (System.Windows.Data.IValueConverter)Application.Current.Resources[converter];
             }
             else if (dateFormat != null)
             {
-                System.Windows.Data.Binding binding = new System.Windows.Data.Binding("[" + field + "]") { StringFormat = dateFormat };
-                column.Binding = binding;
+                binding.StringFormat = dateFormat;
             }
             else if (numeric)
             {
                 // Числа из JSON приходят строками — приводим к виду «12,5»
-                System.Windows.Data.Binding binding = new System.Windows.Data.Binding("[" + field + "]");
                 binding.Converter = (System.Windows.Data.IValueConverter)Application.Current.Resources["Money"];
-                column.Binding = binding;
-                column.ElementStyle = NumericStyle();
+            }
+            else
+            {
+                // Текст: обрезаем длинные значения многоточием, прижимаем влево
+                cellStyle = new Style(typeof(TextBlock));
+                cellStyle.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+                cellStyle.Setters.Add(new Setter(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center));
+                cellStyle.Setters.Add(new Setter(TextBlock.MarginProperty, new Thickness(0, 0, 6, 0)));
             }
 
-            column.ElementStyle = cellStyle;
+            DataGridTextColumn column = new DataGridTextColumn
+            {
+                Header = Localization.T("col." + field),
+                Binding = binding,
+                Width = new DataGridLength(width, DataGridLengthUnitType.Star),
+                ElementStyle = cellStyle
+            };
+
             grid.Columns.Add(column);
         }
 
@@ -1253,12 +1273,12 @@ namespace PayrollClient.Views
         {
             grid.Columns.Clear();
             AddColumn(grid, "ФИО", 2.0);
-            AddColumn(grid, "Отработано, дн.", 0.9, numeric: true);
-            AddColumn(grid, "Норма, дн.", 0.9, numeric: true);
-            AddColumn(grid, "Отработано, ч.", 0.9, numeric: true);
-            AddColumn(grid, "Норма, ч.", 0.8, numeric: true);
-            AddColumn(grid, "Больничный (Б), дн.", 0.9, numeric: true);
-            AddColumn(grid, "Отпуск (О), дн.", 0.9, numeric: true);
+            AddColumn(grid, "Отработано, дн.", 0.9, converter: "Number", numeric: true);
+            AddColumn(grid, "Норма, дн.", 0.9, converter: "Number", numeric: true);
+            AddColumn(grid, "Отработано, ч.", 0.9, converter: "Number", numeric: true);
+            AddColumn(grid, "Норма, ч.", 0.8, converter: "Number", numeric: true);
+            AddColumn(grid, "Больничный (Б), дн.", 0.9, converter: "Number", numeric: true);
+            AddColumn(grid, "Отпуск (О), дн.", 0.9, converter: "Number", numeric: true);
             AddColumn(grid, "Статус", 1.1, useTerm: true);
         }
 
@@ -1614,8 +1634,8 @@ namespace PayrollClient.Views
             {
                 // Аванс: только первая половина месяца
                 AddColumn(grid, "Ставка", 0.55, converter: "Rate");
-                AddColumn(grid, "Дни (1-я пол.), дн.", 0.8, numeric: true);
-                AddColumn(grid, "Часы (1-я пол.), ч.", 0.8, numeric: true);
+                AddColumn(grid, "Дни (1-я пол.), дн.", 0.8, converter: "Number", numeric: true);
+                AddColumn(grid, "Часы (1-я пол.), ч.", 0.8, converter: "Number", numeric: true);
                 AddColumn(grid, "Оклад (50%), руб.", 0.95, numeric: true);
                 AddColumn(grid, "Надбавка (50%), руб.", 0.95, numeric: true);
                 AddColumn(grid, "Аванс (1-я пол.), руб.", 1.0, numeric: true);
@@ -1624,9 +1644,9 @@ namespace PayrollClient.Views
             else
             {
                 AddColumn(grid, "Ставка", 0.45, converter: "Rate");
-                AddColumn(grid, "Дни, дн.", 0.65, numeric: true);
-                AddColumn(grid, "Часы, ч.", 0.65, numeric: true);
-                AddColumn(grid, "Б / О, дн.", 0.6, numeric: true);
+                AddColumn(grid, "Дни, дн.", 0.65, converter: "Number", numeric: true);
+                AddColumn(grid, "Часы, ч.", 0.65, converter: "Number", numeric: true);
+                AddColumn(grid, "Б / О, дн.", 0.6, converter: "Number", numeric: true);
                 AddColumn(grid, "Оклад, руб.", 0.85, numeric: true);
                 AddColumn(grid, "Надбавка, руб.", 0.8, numeric: true);
                 AddColumn(grid, "Б/О, руб.", 0.7, numeric: true);
