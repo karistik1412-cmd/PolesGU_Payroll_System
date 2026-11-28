@@ -64,6 +64,37 @@ namespace PayrollClient.Services
         public DataTable EmployeeHours { get; set; }
     }
 
+
+    // Разбор чисел из DataTable, полученной с сервера (запятая или точка)
+    internal static class NumberTextHelper
+    {
+        public static bool TryParse(object value, out decimal result)
+        {
+            result = 0m;
+            if (value == null) return false;
+
+            if (value is decimal) { result = (decimal)value; return true; }
+            if (value is int) { result = (int)value; return true; }
+            if (value is long) { result = (long)value; return true; }
+            if (value is double) { result = (decimal)(double)value; return true; }
+
+            string text = value.ToString().Trim();
+            if (text.Length == 0) return false;
+
+            if (decimal.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out result)) return true;
+
+            bool comma = text.Contains(",");
+            bool dot = text.Contains(".");
+            if (comma && !dot)
+                return decimal.TryParse(text.Replace(',', '.'), NumberStyles.Any,
+                    CultureInfo.InvariantCulture, out result);
+            if (dot && !comma)
+                return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+
+            return false;
+        }
+    }
+
     // Сервис импорта табеля учета рабочего времени из внешнего Excel-файла
     public static class ExcelTimesheetService
     {
@@ -807,6 +838,152 @@ namespace PayrollClient.Services
             }
 
             return false;
+        }
+
+        // =====================================================================
+        //  Экспорт: таблица расчёта за месяц и листок одного сотрудника
+        // =====================================================================
+        public static void ExportPayrollTable(System.Data.DataTable table, string filePath)
+        {
+            if (table == null) throw new System.ArgumentNullException("table");
+
+            using (XLWorkbook workbook = new XLWorkbook())
+            {
+                IXLWorksheet sheet = workbook.Worksheets.Add("Расчёт");
+
+                // Заголовки
+                for (int c = 0; c < table.Columns.Count; c++)
+                {
+                    IXLCell cell = sheet.Cell(1, c + 1);
+                    cell.Value = table.Columns[c].ColumnName;
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#187740");
+                    cell.Style.Font.FontColor = XLColor.White;
+                    cell.Style.Alignment.WrapText = true;
+                }
+
+                // Данные
+                for (int r = 0; r < table.Rows.Count; r++)
+                {
+                    for (int c = 0; c < table.Columns.Count; c++)
+                    {
+                        object value = table.Rows[r][c];
+                        if (value == null || value == System.DBNull.Value) continue;
+
+                        decimal number;
+                        if (NumberTextHelper.TryParse(value, out number))
+                            sheet.Cell(r + 2, c + 1).Value = number;
+                        else
+                            sheet.Cell(r + 2, c + 1).Value = value.ToString();
+                    }
+                }
+
+                sheet.Columns().AdjustToContents();
+                sheet.SheetView.FreezeRows(1);
+                workbook.SaveAs(filePath);
+            }
+        }
+
+        // Листок сотрудника: реквизиты, начисления и удержания с явным периодом
+        public static void ExportPayslip(System.Data.DataRow row, int month, int year,
+                                         int halfMode, string filePath)
+        {
+            if (row == null) throw new System.ArgumentNullException("row");
+
+            using (XLWorkbook workbook = new XLWorkbook())
+            {
+                IXLWorksheet sheet = workbook.Worksheets.Add("Листок");
+
+                string fullName = row.Table.Columns.Contains("ФИО") && row["ФИО"] != System.DBNull.Value
+                    ? row["ФИО"].ToString()
+                    : string.Empty;
+
+                string period = string.Format("{0} {1} г.", MonthNames[month - 1], year);
+                string half = halfMode == 1
+                    ? "1-я половина месяца (аванс)"
+                    : "2-я половина месяца (окончательный расчёт)";
+
+                // Шапка
+                sheet.Cell(1, 1).Value = "Расчётный листок";
+                sheet.Cell(1, 1).Style.Font.Bold = true;
+                sheet.Cell(1, 1).Style.Font.FontSize = 14;
+
+                sheet.Cell(2, 1).Value = "Сотрудник:";
+                sheet.Cell(2, 2).Value = fullName;
+
+                sheet.Cell(3, 1).Value = "Период:";
+                sheet.Cell(3, 2).Value = period;
+
+                sheet.Cell(4, 1).Value = "Выплата:";
+                sheet.Cell(4, 2).Value = half;
+
+                sheet.Cell(5, 1).Value = "Сформирован:";
+                sheet.Cell(5, 2).Value = System.DateTime.Now.ToString("dd.MM.yyyy HH:mm");
+
+                for (int r = 2; r <= 5; r++)
+                    sheet.Cell(r, 1).Style.Font.Bold = true;
+
+                // Начисления и удержания — только те колонки, что есть в строке
+                string[] moneyColumns;
+                if (halfMode == 1)
+                {
+                    moneyColumns = new[]
+                    {
+                        "Оклад (50%), руб.", "Надбавка (50%), руб.", "Аванс (1-я пол.), руб."
+                    };
+                }
+                else
+                {
+                    moneyColumns = new[]
+                    {
+                        "Оклад, руб.", "Надбавка, руб.", "Б/О, руб.", "Вычет, руб.",
+                        "НДФЛ, руб.", "ФСЗН, руб.", "Профс., руб.",
+                        "1-я пол., руб.", "2-я пол., руб.", "К выплате, руб."
+                    };
+                }
+
+                int line = 7;
+                sheet.Cell(line, 1).Value = "Показатель";
+                sheet.Cell(line, 2).Value = "Сумма, руб.";
+                sheet.Cell(line, 1).Style.Font.Bold = true;
+                sheet.Cell(line, 2).Style.Font.Bold = true;
+                sheet.Range(line, 1, line, 2).Style.Fill.BackgroundColor = XLColor.FromHtml("#E8F6ED");
+                line++;
+
+                foreach (string column in moneyColumns)
+                {
+                    if (!row.Table.Columns.Contains(column)) continue;
+                    object raw = row[column];
+                    if (raw == null || raw == System.DBNull.Value) continue;
+
+                    decimal number;
+                    if (!NumberTextHelper.TryParse(raw, out number)) continue;
+
+                    sheet.Cell(line, 1).Value = column;
+                    sheet.Cell(line, 2).Value = number;
+                    sheet.Cell(line, 2).Style.NumberFormat.Format = "#,##0.00";
+                    line++;
+                }
+
+                // Итог
+                string totalColumn = halfMode == 1 ? "Аванс (1-я пол.), руб." : "К выплате, руб.";
+                if (row.Table.Columns.Contains(totalColumn))
+                {
+                    decimal total;
+                    if (NumberTextHelper.TryParse(row[totalColumn], out total))
+                    {
+                        sheet.Cell(line + 1, 1).Value = "К выплате:";
+                        sheet.Cell(line + 1, 1).Style.Font.Bold = true;
+                        sheet.Cell(line + 1, 2).Value = total;
+                        sheet.Cell(line + 1, 2).Style.Font.Bold = true;
+                        sheet.Cell(line + 1, 2).Style.NumberFormat.Format = "#,##0.00";
+                    }
+                }
+
+                sheet.Column(1).Width = 30;
+                sheet.Column(2).Width = 18;
+                workbook.SaveAs(filePath);
+            }
         }
 
         private static int CountWorkingDays(int year, int month)

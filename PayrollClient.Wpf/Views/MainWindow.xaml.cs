@@ -36,6 +36,22 @@ namespace PayrollClient.Views
         // --- Состояние экрана «Главная» ---
         private string _homeFooter = string.Empty;
 
+        // --- Состояние экрана «Табель» ---
+        private DataTable _timesheet;
+        private DataView _timesheetView;
+        private DataGrid _timesheetGrid;
+
+        // --- Состояние экрана «Расчёт зарплаты» ---
+        private DataTable _payrollResult;
+        private DataView _payrollView;
+        private DataGrid _payrollGrid;
+        private int _payrollHalf = 2;
+
+        // --- Состояние экрана «Пользователи» ---
+        private DataTable _users;
+        private DataView _usersView;
+        private DataGrid _usersGrid;
+
         // Пока окно загружается, обработчики выбора пунктов меню не должны
         // запускать построение экранов (иначе экран строится дважды).
         private bool _ready;
@@ -126,11 +142,15 @@ namespace PayrollClient.Views
 
             if (navHome.IsChecked == true) ShowHomeScreen();
             else if (navEmployees.IsChecked == true) LoadEmployees();
+            else if (navTimesheet.IsChecked == true) LoadTimesheet();
+            else if (navPayroll.IsChecked == true) LoadPayroll();
         }
 
         private void OnSearchChanged(object sender, TextChangedEventArgs e)
         {
             if (navEmployees.IsChecked == true) ApplyEmployeeFilter();
+            else if (navTimesheet.IsChecked == true) ApplyTimesheetFilter();
+            else if (navUsers.IsChecked == true) ApplyUsersFilter();
         }
 
         // =====================================================================
@@ -174,13 +194,10 @@ namespace PayrollClient.Views
             periodPanel.Visibility = showPeriod ? Visibility.Visible : Visibility.Collapsed;
             searchPanel.Visibility = showSearch ? Visibility.Visible : Visibility.Collapsed;
 
-            if (showPeriod) lblMonthCaption.Text = Localization.T("common.month") + ":";
-            else if (showSearch) lblMonthCaption.Text = Localization.T("common.search");
-            else lblMonthCaption.Text = string.Empty;
-
-            lblMonthCaption.Visibility = (showPeriod || showSearch)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            // У поиска собственная подпись («Поиск:»), поэтому общая подпись
+            // нужна только для периода — иначе выходило «Поиск: Поиск:».
+            lblMonthCaption.Text = showPeriod ? Localization.T("common.month") + ":" : string.Empty;
+            lblMonthCaption.Visibility = showPeriod ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private Border CreateCard(string title, string subtitle, out StackPanel body)
@@ -226,7 +243,7 @@ namespace PayrollClient.Views
                       Localization.T("home.subtitle"));
             ResetToolbar(showSearch: false);
             AddAction(Localization.T("chart.refresh"), "PrimaryButton", (s, e) => ShowHomeScreen());
-            AddAction(Localization.T("chart.print"), "OutlineButton", null);
+            AddAction(Localization.T("chart.print"), "OutlineButton", OnPrintCharts);
 
             pageHost.Children.Clear();
             pageHost.RowDefinitions.Clear();
@@ -401,6 +418,38 @@ namespace PayrollClient.Views
             // Итоговая строка одна — закреплённая внизу окна (lblFooter).
             // Второй такой же строки под графиками больше нет.
             LoadCharts(deptChart, structureChart, trendChart, hoursChart, lblFooter);
+        }
+
+        // Печать дашборда: страница собирается из тех же графиков.
+        // Печатаем текущую страницу «Главной» через системный диалог печати.
+        private void OnPrintCharts(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                PrintDialog dialog = new PrintDialog();
+                if (dialog.ShowDialog() != true) return;
+
+                // Печатаем содержимое страницы, подобрав масштаб под лист
+                FrameworkElement content = pageHost;
+                double pageWidth = dialog.PrintableAreaWidth;
+                double pageHeight = dialog.PrintableAreaHeight;
+
+                double scale = Math.Min(pageWidth / Math.Max(1, content.ActualWidth),
+                                        pageHeight / Math.Max(1, content.ActualHeight));
+                if (scale <= 0 || double.IsInfinity(scale)) scale = 1;
+
+                content.Measure(new Size(pageWidth, pageHeight));
+                content.Arrange(new Rect(0, 0, content.ActualWidth, content.ActualHeight));
+                content.UpdateLayout();
+
+                dialog.PrintVisual(content, string.Format("{0} — {1} {2} г.",
+                    Localization.T("home.kpiFund"), MonthName(_selectedMonth), _selectedYear));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.error") + "\n" + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void AddStatCard(Grid host, int column, string title, string value, string caption)
@@ -633,11 +682,54 @@ namespace PayrollClient.Views
         private static double ReadDouble(DataRow row, string column)
         {
             if (row == null || !row.Table.Columns.Contains(column) || row[column] == DBNull.Value) return 0;
-            decimal value;
-            if (decimal.TryParse(row[column].ToString(), NumberStyles.Any,
-                    CultureInfo.InvariantCulture, out value))
-                return (double)value;
-            return 0;
+            return (double)ParseNumber(row[column]);
+        }
+
+        // Разбор числа из JSON.
+        // DataTable, собранная из JSON, приходит в виде строки, причём разделитель
+        // дробной части зависит от культуры сервера: «30980,94» или «30980.94».
+        // InvariantCulture читает запятую как разделитель РАЗРЯДОВ, поэтому
+        // «30 980,94» превращалось в 3098094 — отсюда огромные подписи на графиках.
+        internal static decimal ParseNumber(object raw)
+        {
+            if (raw == null || raw == DBNull.Value) return 0m;
+
+            decimal result;
+            if (raw is decimal) return (decimal)raw;
+            if (raw is int) return (int)raw;
+            if (raw is long) return (long)raw;
+            if (raw is double) return (decimal)(double)raw;
+            if (raw is float) return (decimal)(float)raw;
+
+            string text = raw.ToString().Trim();
+            if (text.Length == 0) return 0m;
+
+            // Сначала «как есть» в текущей культуре
+            if (decimal.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out result)) return result;
+
+            // Затем с явно заданным разделителем дробной части
+            if (text.Contains(",") && !text.Contains("."))
+            {
+                if (decimal.TryParse(text.Replace(',', '.'), NumberStyles.Any,
+                        CultureInfo.InvariantCulture, out result)) return result;
+            }
+            else if (text.Contains(".") && !text.Contains(","))
+            {
+                if (decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out result)) return result;
+            }
+            else
+            {
+                // Есть и точка, и запятая: последняя из них — десятичная
+                int lastComma = text.LastIndexOf(',');
+                int lastDot = text.LastIndexOf('.');
+                string normalized = lastComma > lastDot
+                    ? text.Replace(".", string.Empty).Replace(',', '.')
+                    : text.Replace(",", string.Empty);
+                if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
+                    return result;
+            }
+
+            return 0m;
         }
 
         private string PayoutStageText()
@@ -682,12 +774,16 @@ namespace PayrollClient.Views
         }
 
         // Пересобираем оболочку и открываемый экран уже на новом языке
+        // После смены языка перестраиваем текущий экран целиком
         private void RebuildForLanguage()
         {
             ApplyLocalization();
             BuildPeriodSelectors();
 
             if (navEmployees.IsChecked == true) LoadEmployees();
+            else if (navTimesheet.IsChecked == true) LoadTimesheet();
+            else if (navPayroll.IsChecked == true) LoadPayroll();
+            else if (navUsers.IsChecked == true) LoadUsers();
             else ShowHomeScreen();
         }
 
@@ -844,7 +940,8 @@ namespace PayrollClient.Views
         }
 
         private static void AddColumn(DataGrid grid, string field, double width,
-                                      bool useTerm = false, string converter = null, string dateFormat = null)
+                                      bool useTerm = false, string converter = null, string dateFormat = null,
+                                      bool numeric = false)
         {
             DataGridTextColumn column = new DataGridTextColumn
             {
@@ -875,9 +972,28 @@ namespace PayrollClient.Views
                 System.Windows.Data.Binding binding = new System.Windows.Data.Binding("[" + field + "]") { StringFormat = dateFormat };
                 column.Binding = binding;
             }
+            else if (numeric)
+            {
+                // Числа из JSON приходят строками — приводим к виду «12,5»
+                System.Windows.Data.Binding binding = new System.Windows.Data.Binding("[" + field + "]");
+                binding.Converter = (System.Windows.Data.IValueConverter)Application.Current.Resources["Money"];
+                column.Binding = binding;
+                column.ElementStyle = NumericStyle();
+            }
 
             column.ElementStyle = cellStyle;
             grid.Columns.Add(column);
+        }
+
+        // Числовые ячейки — по правому краю, как принято в таблицах
+        private static Style NumericStyle()
+        {
+            Style style = new Style(typeof(TextBlock));
+            style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+            style.Setters.Add(new Setter(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center));
+            style.Setters.Add(new Setter(TextBlock.HorizontalAlignmentProperty, HorizontalAlignment.Right));
+            style.Setters.Add(new Setter(TextBlock.MarginProperty, new Thickness(0, 0, 8, 0)));
+            return style;
         }
 
         private void ApplyEmployeeFilter()
@@ -1054,19 +1170,849 @@ namespace PayrollClient.Views
         private void OnNavTimesheet(object sender, RoutedEventArgs e)
         {
             if (!_ready) return;
-            ShowPlaceholder(Localization.T("ts.screen"), Localization.T("ts.subtitle"));
+            LoadTimesheet();
         }
 
         private void OnNavPayroll(object sender, RoutedEventArgs e)
         {
             if (!_ready) return;
-            ShowPlaceholder(Localization.T("payroll.screen"), Localization.T("payroll.subtitle"));
+            LoadPayroll();
         }
 
         private void OnNavUsers(object sender, RoutedEventArgs e)
         {
             if (!_ready) return;
-            ShowPlaceholder(Localization.T("users.screen"), Localization.T("users.subtitle"));
+            LoadUsers();
+        }
+
+        // =====================================================================
+        //  ЭКРАН 3: ТАБЕЛЬ
+        // =====================================================================
+        private void LoadTimesheet()
+        {
+            SetHeader(Localization.T("ts.screen"), Localization.T("ts.subtitle"));
+            ResetToolbar(showSearch: true, showPeriod: true);
+            actionBar.Children.Clear();
+
+            Button btnImport = AddAction(Localization.T("ts.import"), "PrimaryButton", OnImportTimesheet);
+            Button btnSave = AddAction(Localization.T("ts.saveManual"), "OutlineButton", OnSaveTimesheet);
+            AddAction(Localization.T("ts.reset"), "DangerButton", OnClearTimesheet);
+            AddAction(Localization.T("common.refresh"), "OutlineButton", (s, e) => LoadTimesheet());
+            ButtonMetrics.AutoSize(new[] { btnImport, btnSave });
+
+            pageHost.Children.Clear();
+
+            Border card = new Border
+            {
+                Style = (Style)Application.Current.Resources["Card"],
+                Padding = new Thickness(4)
+            };
+
+            DataGrid grid = new DataGrid
+            {
+                Style = (Style)Application.Current.Resources["AppDataGrid"],
+                IsReadOnly = false,
+                CanUserAddRows = false,
+                CanUserDeleteRows = false
+            };
+            _timesheetGrid = grid;
+
+            BuildTimesheetColumns(grid);
+            grid.ContextMenu = BuildTimesheetContextMenu();
+            grid.CellEditEnding += (s, e) => ScheduleTimesheetRecalc();
+            card.Child = grid;
+            pageHost.Children.Add(card);
+
+            try
+            {
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "GET_TIMESHEETS",
+                    Data = string.Format("{0}|{1}", _selectedMonth, _selectedYear)
+                });
+
+                if (response == null || !response.IsSuccess)
+                {
+                    lblFooter.Text = Localization.T("common.errorLoading") +
+                                     (response == null ? string.Empty : response.ErrorMessage);
+                    return;
+                }
+
+                _timesheet = JsonConvert.DeserializeObject<DataTable>(response.Data);
+                _timesheetView = _timesheet == null ? null : _timesheet.DefaultView;
+                grid.ItemsSource = _timesheetView;
+                ApplyTimesheetFilter();
+            }
+            catch (Exception ex)
+            {
+                lblFooter.Text = Localization.T("common.errorNetwork") + ex.Message;
+            }
+        }
+
+        private void BuildTimesheetColumns(DataGrid grid)
+        {
+            grid.Columns.Clear();
+            AddColumn(grid, "ФИО", 2.0);
+            AddColumn(grid, "Отработано, дн.", 0.9, numeric: true);
+            AddColumn(grid, "Норма, дн.", 0.9, numeric: true);
+            AddColumn(grid, "Отработано, ч.", 0.9, numeric: true);
+            AddColumn(grid, "Норма, ч.", 0.8, numeric: true);
+            AddColumn(grid, "Больничный (Б), дн.", 0.9, numeric: true);
+            AddColumn(grid, "Отпуск (О), дн.", 0.9, numeric: true);
+            AddColumn(grid, "Статус", 1.1, useTerm: true);
+        }
+
+        private ContextMenu BuildTimesheetContextMenu()
+        {
+            ContextMenu menu = new ContextMenu();
+            menu.Items.Add(CreateMenuItem(Localization.T("ts.import"), OnImportTimesheet));
+            menu.Items.Add(CreateMenuItem(Localization.T("ts.saveManual"), OnSaveTimesheet));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(CreateMenuItem(Localization.T("common.refresh"), (s, e) => LoadTimesheet()));
+            return menu;
+        }
+
+        // Правки в табеле пересчитывают норму и итог в нижней строке
+        private void ScheduleTimesheetRecalc()
+        {
+            Dispatcher.BeginInvoke(new Action(UpdateTimesheetFooter));
+        }
+
+        private void ApplyTimesheetFilter()
+        {
+            if (_timesheetView == null) return;
+
+            string query = txtSearch.Text.Trim();
+            if (string.IsNullOrEmpty(query)) _timesheetView.RowFilter = string.Empty;
+            else _timesheetView.RowFilter = string.Format("[ФИО] LIKE '%{0}%'", query.Replace("'", "''"));
+
+            UpdateTimesheetFooter();
+        }
+
+        private void UpdateTimesheetFooter()
+        {
+            if (_timesheet == null || _timesheetView == null)
+            {
+                lblFooter.Text = string.Empty;
+                return;
+            }
+
+            int rows = _timesheetView.Count;
+            decimal days = 0m;
+            decimal normDays = 0m;
+            decimal hours = 0m;
+            int sick = 0;
+            int vacation = 0;
+
+            foreach (DataRowView view in _timesheetView)
+            {
+                DataRow row = view.Row;
+                days += ParseNumber(GetCell(row, "Отработано, дн."));
+                normDays += ParseNumber(GetCell(row, "Норма, дн."));
+                hours += ParseNumber(GetCell(row, "Отработано, ч."));
+                sick += (int)ParseNumber(GetCell(row, "Больничный (Б), дн."));
+                vacation += (int)ParseNumber(GetCell(row, "Отпуск (О), дн."));
+            }
+
+            lblFooter.Text = string.Format(
+                "{0}: {1}  |  {2}: {3:0.##} / {4:0.##}  |  {5}: {6:0.#}  |  {7}: {8}  |  {9}: {10}",
+                Localization.T("common.employees"), rows,
+                Localization.T("ts.days"), days, normDays,
+                Localization.T("ts.hours"), hours,
+                Localization.T("ts.sick"), sick,
+                Localization.T("ts.vacation"), vacation);
+        }
+
+        private static object GetCell(DataRow row, string column)
+        {
+            if (row == null || !row.Table.Columns.Contains(column)) return null;
+            object value = row[column];
+            return value == DBNull.Value ? null : value;
+        }
+
+        private void OnImportTimesheet(object sender, RoutedEventArgs e)
+        {
+            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = Localization.T("ts.import"),
+                Filter = "Excel (*.xlsx;*.xls)|*.xlsx;*.xls|Все файлы (*.*)|*.*"
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                ExcelParseResult parsed = ExcelTimesheetService.ParseTimesheetFile(
+                    dialog.FileName, _selectedMonth, _selectedYear);
+
+                if (parsed == null || parsed.Entries == null || parsed.Entries.Count == 0)
+                {
+                    MessageBox.Show(parsed == null ? Localization.T("common.noData") : parsed.InfoMessage,
+                        Localization.T("common.attention"), MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // Файл может относиться к другому месяцу — предупредим
+                if (parsed.DetectedMonth.HasValue && parsed.DetectedMonth.Value != _selectedMonth)
+                {
+                    string period = string.Format("{0} {1}", MonthName(parsed.DetectedMonth.Value),
+                        parsed.DetectedYear ?? _selectedYear);
+                    MessageBox.Show(Localization.T("ts.periodMismatch", period),
+                        Localization.T("common.attention"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+
+                TimesheetImportRequestDto request = new TimesheetImportRequestDto
+                {
+                    Month = _selectedMonth,
+                    Year = _selectedYear,
+                    Entries = parsed.Entries
+                };
+
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "IMPORT_TIMESHETS",
+                    Data = JsonConvert.SerializeObject(request)
+                });
+
+                if (response == null || !response.IsSuccess)
+                {
+                    MessageBox.Show(response == null ? Localization.T("common.errorNetwork") : response.ErrorMessage,
+                        Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                TimesheetImportResultDto result =
+                    JsonConvert.DeserializeObject<TimesheetImportResultDto>(response.Data);
+
+                string text = result == null
+                    ? Localization.T("ts.importOk")
+                    : Localization.T("ts.importResult", result.SavedCount, result.TotalCount);
+
+                if (result != null && result.UnmatchedNames != null && result.UnmatchedNames.Count > 0)
+                    text += "\n\n" + Localization.T("ts.unmatched") + "\n• " +
+                            string.Join("\n• ", result.UnmatchedNames.Take(10));
+
+                MessageBox.Show(text, Localization.T("common.done"), MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                LoadTimesheet();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.error") + "\n" + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OnSaveTimesheet(object sender, RoutedEventArgs e)
+        {
+            if (_timesheet == null || _timesheet.Rows.Count == 0)
+            {
+                MessageBox.Show(Localization.T("common.noData"), Localization.T("common.attention"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                List<TimesheetEntryDto> entries = new List<TimesheetEntryDto>();
+                foreach (DataRow row in _timesheet.Rows)
+                {
+                    object idRaw = GetCell(row, "EmployeeID");
+                    if (idRaw == null) continue;
+
+                    entries.Add(new TimesheetEntryDto
+                    {
+                        EmployeeId = (int)ParseNumber(idRaw),
+                        FullName = Convert.ToString(GetCell(row, "ФИО")),
+                        Rate = ParseNumber(GetCell(row, "Rate")),
+                        DaysWorked = (int)ParseNumber(GetCell(row, "Отработано, дн.")),
+                        NormDays = (int)ParseNumber(GetCell(row, "Норма, дн.")),
+                        HoursWorked = ParseNumber(GetCell(row, "Отработано, ч.")),
+                        NormHours = ParseNumber(GetCell(row, "Норма, ч.")),
+                        HasHours = true,
+                        SickDays = (int)ParseNumber(GetCell(row, "Больничный (Б), дн.")),
+                        VacationDays = (int)ParseNumber(GetCell(row, "Отпуск (О), дн."))
+                    });
+                }
+
+                TimesheetImportRequestDto request = new TimesheetImportRequestDto
+                {
+                    Month = _selectedMonth,
+                    Year = _selectedYear,
+                    Entries = entries
+                };
+
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "IMPORT_TIMESHETS",
+                    Data = JsonConvert.SerializeObject(request)
+                });
+
+                if (response != null && response.IsSuccess)
+                {
+                    MessageBox.Show(Localization.T("ts.saved"), Localization.T("common.done"),
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadTimesheet();
+                }
+                else
+                {
+                    MessageBox.Show(response == null ? Localization.T("common.errorNetwork") : response.ErrorMessage,
+                        Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.error") + "\n" + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OnClearTimesheet(object sender, RoutedEventArgs e)
+        {
+            string period = string.Format("{0} {1} г.", MonthName(_selectedMonth), _selectedYear);
+            if (MessageBox.Show(Localization.T("ts.confirmClear", period),
+                    Localization.T("common.confirm"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "CLEAR_TIMESHETS",
+                    Data = string.Format("{0}|{1}", _selectedMonth, _selectedYear)
+                });
+
+                if (response != null && response.IsSuccess)
+                {
+                    MessageBox.Show(response.Data, Localization.T("common.done"),
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadTimesheet();
+                }
+                else
+                {
+                    MessageBox.Show(response == null ? Localization.T("common.errorNetwork") : response.ErrorMessage,
+                        Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                lblFooter.Text = Localization.T("common.errorNetwork") + ex.Message;
+            }
+        }
+
+        // =====================================================================
+        //  ЭКРАН 4: РАСЧЁТ ЗАРАБОТНОЙ ПЛАТЫ
+        // =====================================================================
+        private void LoadPayroll()
+        {
+            SetHeader(Localization.T("payroll.screen"), Localization.T("payroll.subtitle"));
+            ResetToolbar(showSearch: false, showPeriod: true);
+            actionBar.Children.Clear();
+
+            AddAction(Localization.T("payroll.calc"), "PrimaryButton", OnCalculatePayroll);
+            AddAction(Localization.T("payroll.save"), "AccentButton", OnSavePayroll);
+            AddAction(Localization.T("payroll.export"), "OutlineButton", OnExportPayroll);
+            AddAction(Localization.T("payroll.payslip"), "OutlineButton", OnPayslipPayroll);
+            AddAction(Localization.T("common.refresh"), "OutlineButton", (s, e) => LoadPayroll());
+
+            pageHost.Children.Clear();
+            pageHost.RowDefinitions.Clear();
+            pageHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            pageHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            // --- Выбор этапа выплаты ---
+            Border stageCard = new Border
+            {
+                Style = (Style)Application.Current.Resources["CardTight"],
+                Padding = new Thickness(16, 10, 16, 10),
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            StackPanel stageRow = new StackPanel { Orientation = Orientation.Horizontal };
+            stageRow.Children.Add(new TextBlock
+            {
+                Text = Localization.T("payroll.stage") + ":",
+                Style = (Style)Application.Current.Resources["FieldLabel"],
+                Margin = new Thickness(0, 0, 12, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            RadioButton firstHalf = StageRadio(Localization.T("payroll.half1"), 1);
+            RadioButton wholeMonth = StageRadio(Localization.T("payroll.halfAll"), 2);
+            if (_payrollHalf == 1) firstHalf.IsChecked = true; else wholeMonth.IsChecked = true;
+            stageRow.Children.Add(firstHalf);
+            stageRow.Children.Add(wholeMonth);
+
+            stageRow.Children.Add(new TextBlock
+            {
+                Text = string.Format(Localization.T("payroll.periodHint2"),
+                    MonthName(_selectedMonth), _selectedYear,
+                    _payrollHalf == 1 ? Localization.T("payroll.mode1") : Localization.T("payroll.modeAll")),
+                Style = (Style)Application.Current.Resources["HintText"],
+                Margin = new Thickness(20, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            stageCard.Child = stageRow;
+            Grid.SetRow(stageCard, 0);
+            pageHost.Children.Add(stageCard);
+
+            // --- Таблица расчёта ---
+            Border card = new Border
+            {
+                Style = (Style)Application.Current.Resources["Card"],
+                Padding = new Thickness(4)
+            };
+
+            DataGrid grid = new DataGrid
+            {
+                Style = (Style)Application.Current.Resources["AppDataGrid"]
+            };
+            _payrollGrid = grid;
+            BuildPayrollColumns(grid);
+            grid.ContextMenu = BuildPayrollContextMenu();
+            card.Child = grid;
+            Grid.SetRow(card, 1);
+            pageHost.Children.Add(card);
+
+            if (_payrollResult != null && _payrollView != null)
+            {
+                grid.ItemsSource = _payrollView;
+                UpdatePayrollFooter();
+            }
+            else
+            {
+                lblFooter.Text = string.Format(Localization.T("payroll.periodHint"),
+                    MonthName(_selectedMonth), _selectedYear);
+            }
+        }
+
+        private RadioButton StageRadio(string text, int mode)
+        {
+            RadioButton radio = new RadioButton
+            {
+                Content = text,
+                GroupName = "PayrollStage",
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 18, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                IsChecked = _payrollHalf == mode
+            };
+            radio.Checked += (s, e) =>
+            {
+                _payrollHalf = mode;
+                OnCalculatePayroll(s, e);
+            };
+            return radio;
+        }
+
+        private void BuildPayrollColumns(DataGrid grid)
+        {
+            grid.Columns.Clear();
+            AddColumn(grid, "ФИО", 1.7);
+
+            if (_payrollHalf == 1)
+            {
+                // Аванс: только первая половина месяца
+                AddColumn(grid, "Ставка", 0.55, converter: "Rate");
+                AddColumn(grid, "Дни (1-я пол.), дн.", 0.8, numeric: true);
+                AddColumn(grid, "Часы (1-я пол.), ч.", 0.8, numeric: true);
+                AddColumn(grid, "Оклад (50%), руб.", 0.95, numeric: true);
+                AddColumn(grid, "Надбавка (50%), руб.", 0.95, numeric: true);
+                AddColumn(grid, "Аванс (1-я пол.), руб.", 1.0, numeric: true);
+                AddColumn(grid, "Этап выплаты", 1.1, useTerm: true);
+            }
+            else
+            {
+                AddColumn(grid, "Ставка", 0.45, converter: "Rate");
+                AddColumn(grid, "Дни, дн.", 0.65, numeric: true);
+                AddColumn(grid, "Часы, ч.", 0.65, numeric: true);
+                AddColumn(grid, "Б / О, дн.", 0.6, numeric: true);
+                AddColumn(grid, "Оклад, руб.", 0.85, numeric: true);
+                AddColumn(grid, "Надбавка, руб.", 0.8, numeric: true);
+                AddColumn(grid, "Б/О, руб.", 0.7, numeric: true);
+                AddColumn(grid, "Вычет, руб.", 0.7, numeric: true);
+                AddColumn(grid, "НДФЛ, руб.", 0.7, numeric: true);
+                AddColumn(grid, "ФСЗН, руб.", 0.7, numeric: true);
+                AddColumn(grid, "Профс., руб.", 0.65, numeric: true);
+                AddColumn(grid, "1-я пол., руб.", 0.8, numeric: true);
+                AddColumn(grid, "2-я пол., руб.", 0.8, numeric: true);
+                AddColumn(grid, "К выплате, руб.", 0.9, numeric: true);
+            }
+        }
+
+        private ContextMenu BuildPayrollContextMenu()
+        {
+            ContextMenu menu = new ContextMenu();
+            menu.Items.Add(CreateMenuItem(Localization.T("payroll.calc"), OnCalculatePayroll));
+            menu.Items.Add(CreateMenuItem(Localization.T("payroll.save"), OnSavePayroll));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(CreateMenuItem(Localization.T("payroll.export"), OnExportPayroll));
+            menu.Items.Add(CreateMenuItem(Localization.T("payroll.payslip"), OnPayslipPayroll));
+            return menu;
+        }
+
+        private void OnCalculatePayroll(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "CALCULATE_PAYROLL",
+                    Data = string.Format("{0}|{1}|{2}", _selectedMonth, _selectedYear, _payrollHalf)
+                });
+
+                if (response == null || !response.IsSuccess)
+                {
+                    lblFooter.Text = Localization.T("common.errorLoading") +
+                                     (response == null ? string.Empty : response.ErrorMessage);
+                    return;
+                }
+
+                _payrollResult = JsonConvert.DeserializeObject<DataTable>(response.Data);
+                _payrollView = _payrollResult == null ? null : _payrollResult.DefaultView;
+
+                BuildPayrollColumns(_payrollGrid);
+                _payrollGrid.ItemsSource = _payrollView;
+                UpdatePayrollFooter();
+            }
+            catch (Exception ex)
+            {
+                lblFooter.Text = Localization.T("common.errorNetwork") + ex.Message;
+            }
+        }
+
+        private void UpdatePayrollFooter()
+        {
+            if (_payrollResult == null || _payrollView == null || _payrollView.Count == 0)
+            {
+                lblFooter.Text = string.Format(Localization.T("payroll.periodHint"),
+                    MonthName(_selectedMonth), _selectedYear);
+                return;
+            }
+
+            int count = _payrollView.Count;
+
+            if (_payrollHalf == 1)
+            {
+                decimal advance = 0m;
+                foreach (DataRowView view in _payrollView)
+                    advance += ParseNumber(GetCell(view.Row, "Аванс (1-я пол.), руб."));
+
+                lblFooter.Text = string.Format(Localization.T("payroll.totalsAdvance"),
+                    count, advance.ToString("N2"));
+            }
+            else
+            {
+                decimal gross = 0m, tax = 0m, first = 0m, second = 0m, net = 0m;
+                foreach (DataRowView view in _payrollView)
+                {
+                    DataRow row = view.Row;
+                    decimal basePay = ParseNumber(GetCell(row, "Оклад, руб."));
+                    decimal bonus = ParseNumber(GetCell(row, "Надбавка, руб."));
+                    decimal sick = ParseNumber(GetCell(row, "Б/О, руб."));
+                    gross += basePay + bonus + sick;
+                    tax += ParseNumber(GetCell(row, "НДФЛ, руб.")) +
+                           ParseNumber(GetCell(row, "ФСЗН, руб.")) +
+                           ParseNumber(GetCell(row, "Профс., руб."));
+                    first += ParseNumber(GetCell(row, "1-я пол., руб."));
+                    second += ParseNumber(GetCell(row, "2-я пол., руб."));
+                    net += ParseNumber(GetCell(row, "К выплате, руб."));
+                }
+
+                lblFooter.Text = string.Format(Localization.T("payroll.totalsFull"),
+                    count, gross.ToString("N2"), tax.ToString("N2"),
+                    first.ToString("N2"), second.ToString("N2"), net.ToString("N2"));
+            }
+        }
+
+        private void OnSavePayroll(object sender, RoutedEventArgs e)
+        {
+            if (_payrollResult == null || _payrollResult.Rows.Count == 0)
+            {
+                MessageBox.Show(Localization.T("payroll.nothingToSave"), Localization.T("common.attention"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                // Формат сервера: месяц|год|json
+                string payload = string.Format("{0}|{1}|{2}", _selectedMonth, _selectedYear,
+                    JsonConvert.SerializeObject(_payrollResult));
+
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "SAVE_PAYROLL",
+                    Data = payload
+                });
+
+                if (response != null && response.IsSuccess)
+                {
+                    MessageBox.Show(Localization.T("payroll.saved"), Localization.T("common.done"),
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show(response == null ? Localization.T("common.errorNetwork") : response.ErrorMessage,
+                        Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.error") + "\n" + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OnExportPayroll(object sender, RoutedEventArgs e)
+        {
+            if (_payrollView == null || _payrollView.Count == 0)
+            {
+                MessageBox.Show(Localization.T("payroll.nothingToSave"), Localization.T("common.attention"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            Microsoft.Win32.SaveFileDialog dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = Localization.T("payroll.export"),
+                Filter = "Excel (*.xlsx)|*.xlsx",
+                FileName = string.Format("Расчёт_{0}_{1}.xlsx", MonthName(_selectedMonth), _selectedYear)
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                ExcelTimesheetService.ExportPayrollTable(_payrollResult, dialog.FileName);
+                MessageBox.Show(Localization.T("payroll.exported"), Localization.T("common.done"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.error") + "\n" + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OnPayslipPayroll(object sender, RoutedEventArgs e)
+        {
+            if (_payrollView == null || _payrollView.Count == 0)
+            {
+                MessageBox.Show(Localization.T("payroll.nothingToSave"), Localization.T("common.attention"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Нужен выбранный сотрудник — берём строку таблицы
+            DataRowView selected = _payrollGrid.SelectedItem as DataRowView;
+            if (selected == null)
+            {
+                MessageBox.Show(Localization.T("payroll.selectEmployee"), Localization.T("common.attention"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            Microsoft.Win32.SaveFileDialog dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = Localization.T("payroll.payslip"),
+                Filter = "Excel (*.xlsx)|*.xlsx",
+                FileName = string.Format("Листок_{0}.xlsx",
+                    Convert.ToString(GetCell(selected.Row, "ФИО")))
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                ExcelTimesheetService.ExportPayslip(selected.Row, _selectedMonth, _selectedYear,
+                    _payrollHalf, dialog.FileName);
+                MessageBox.Show(Localization.T("payroll.exported"), Localization.T("common.done"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.error") + "\n" + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // =====================================================================
+        //  ЭКРАН 5: ПОЛЬЗОВАТЕЛИ
+        // =====================================================================
+        private void LoadUsers()
+        {
+            SetHeader(Localization.T("users.screen"), Localization.T("users.subtitle"));
+            ResetToolbar(showSearch: true, showPeriod: false);
+            actionBar.Children.Clear();
+
+            AddAction(Localization.T("users.add"), "PrimaryButton", OnAddUser);
+            AddAction(Localization.T("users.delete"), "DangerButton", OnDeleteUser);
+            AddAction(Localization.T("common.refresh"), "OutlineButton", (s, e) => LoadUsers());
+
+            pageHost.Children.Clear();
+
+            Border card = new Border
+            {
+                Style = (Style)Application.Current.Resources["Card"],
+                Padding = new Thickness(4)
+            };
+
+            DataGrid grid = new DataGrid
+            {
+                Style = (Style)Application.Current.Resources["AppDataGrid"]
+            };
+            _usersGrid = grid;
+            grid.Columns.Clear();
+            AddColumn(grid, "Логин", 1.4);
+            AddColumn(grid, "Роль", 1.4, useTerm: true);
+            grid.ContextMenu = BuildUsersContextMenu();
+            grid.SelectionChanged += (s, e) => UpdateUsersFooter();
+            card.Child = grid;
+            pageHost.Children.Add(card);
+
+            try
+            {
+                NetworkMessage response = new ServerConnection().SendRequest(
+                    new NetworkMessage { Command = "GET_USERS" });
+
+                if (response == null || !response.IsSuccess)
+                {
+                    lblFooter.Text = Localization.T("common.errorLoading") +
+                                     (response == null ? string.Empty : response.ErrorMessage);
+                    return;
+                }
+
+                _users = JsonConvert.DeserializeObject<DataTable>(response.Data);
+                _usersView = _users == null ? null : _users.DefaultView;
+                grid.ItemsSource = _usersView;
+                ApplyUsersFilter();
+            }
+            catch (Exception ex)
+            {
+                lblFooter.Text = Localization.T("common.errorNetwork") + ex.Message;
+            }
+        }
+
+        private ContextMenu BuildUsersContextMenu()
+        {
+            ContextMenu menu = new ContextMenu();
+            menu.Items.Add(CreateMenuItem(Localization.T("users.add"), OnAddUser));
+            menu.Items.Add(CreateMenuItem(Localization.T("users.delete"), OnDeleteUser, danger: true));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(CreateMenuItem(Localization.T("common.refresh"), (s, e) => LoadUsers()));
+            return menu;
+        }
+
+        private void ApplyUsersFilter()
+        {
+            if (_usersView == null) return;
+
+            string query = txtSearch.Text.Trim();
+            if (string.IsNullOrEmpty(query)) _usersView.RowFilter = string.Empty;
+            else _usersView.RowFilter = string.Format("[Логин] LIKE '%{0}%'", query.Replace("'", "''"));
+
+            UpdateUsersFooter();
+        }
+
+        private void UpdateUsersFooter()
+        {
+            if (_usersView == null)
+            {
+                lblFooter.Text = string.Empty;
+                return;
+            }
+
+            int total = _usersView.Count;
+            int admins = 0, accountants = 0, economists = 0;
+
+            foreach (DataRowView view in _usersView)
+            {
+                object roleRaw = GetCell(view.Row, "Роль");
+                string role = roleRaw == null ? string.Empty : roleRaw.ToString().Trim();
+                if (role == "Администратор") admins++;
+                else if (role == "Бухгалтер") accountants++;
+                else if (role == "Экономист") economists++;
+            }
+
+            lblFooter.Text = string.Format(
+                "{0}: {1}  |  {2}: {3}  |  {4}: {5}  |  {6}: {7}",
+                Localization.T("users.total"), total,
+                Localization.T("users.admins"), admins,
+                Localization.T("users.accountants"), accountants,
+                Localization.T("users.economists"), economists);
+        }
+
+        private void OnAddUser(object sender, RoutedEventArgs e)
+        {
+            UserEditorWindow editor = new UserEditorWindow();
+            if (editor.ShowDialog() != true) return;
+
+            try
+            {
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "ADD_USER",
+                    Data = string.Format("{0}|{1}|{2}", editor.Login, editor.Password, editor.RoleId)
+                });
+
+                if (response != null && response.IsSuccess)
+                {
+                    LoadUsers();
+                }
+                else
+                {
+                    MessageBox.Show(response == null ? Localization.T("common.errorNetwork") : response.ErrorMessage,
+                        Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.errorNetwork") + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OnDeleteUser(object sender, RoutedEventArgs e)
+        {
+            DataRowView selected = _usersGrid == null ? null : _usersGrid.SelectedItem as DataRowView;
+            if (selected == null)
+            {
+                MessageBox.Show(Localization.T("users.selectUser"), Localization.T("common.attention"),
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            object idRaw = GetCell(selected.Row, "UserID");
+            if (idRaw == null) return;
+            int userId = (int)ParseNumber(idRaw);
+
+            string login = Convert.ToString(GetCell(selected.Row, "Логин"));
+            if (MessageBox.Show(Localization.T("users.confirmDelete", login),
+                    Localization.T("common.confirm"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                NetworkMessage response = new ServerConnection().SendRequest(new NetworkMessage
+                {
+                    Command = "DELETE_USER",
+                    Data = string.Format("{0}|{1}", userId, _currentUserId)
+                });
+
+                if (response != null && response.IsSuccess)
+                {
+                    LoadUsers();
+                }
+                else
+                {
+                    MessageBox.Show(response == null ? Localization.T("common.errorNetwork") : response.ErrorMessage,
+                        Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Localization.T("common.errorNetwork") + ex.Message,
+                    Localization.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         // Заглушка для экранов, которые переедут в WPF на следующем шаге

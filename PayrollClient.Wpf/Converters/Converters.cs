@@ -7,6 +7,54 @@ using Localization = PayrollClient.Services.Localization; // снимает ко
 
 namespace PayrollClient.Converters
 {
+    // Разбор чисел, приходящих со стороны сервера.
+    // DataTable из JSON отдаёт значения строками, причём разделитель дробной части
+    // зависит от культуры сервера: «0,75» или «0.75». InvariantCulture читает запятую
+    // как разделитель РАЗРЯДОВ, из-за чего 0,75 превращалось в 75, а 30 980,94 —
+    // в 3 098 094. Поэтому разбираем аккуратно, с учётом обоих вариантов.
+    internal static class NumberText
+    {
+        public static bool TryParse(object value, out decimal result)
+        {
+            result = 0m;
+            if (value == null) return false;
+
+            if (value is decimal) { result = (decimal)value; return true; }
+            if (value is int) { result = (int)value; return true; }
+            if (value is long) { result = (long)value; return true; }
+            if (value is double) { result = (decimal)(double)value; return true; }
+            if (value is float) { result = (decimal)(float)value; return true; }
+
+            string text = value.ToString().Trim();
+            if (text.Length == 0) return false;
+
+            if (decimal.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out result)) return true;
+
+            bool hasComma = text.Contains(",");
+            bool hasDot = text.Contains(".");
+
+            if (hasComma && !hasDot)
+                return decimal.TryParse(text.Replace(',', '.'), NumberStyles.Any,
+                    CultureInfo.InvariantCulture, out result);
+
+            if (hasDot && !hasComma)
+                return decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+
+            if (hasComma && hasDot)
+            {
+                // Последний из разделителей — десятичный
+                int lastComma = text.LastIndexOf(',');
+                int lastDot = text.LastIndexOf('.');
+                string normalized = lastComma > lastDot
+                    ? text.Replace(".", string.Empty).Replace(',', '.')
+                    : text.Replace(",", string.Empty);
+                return decimal.TryParse(normalized, NumberStyles.Any,
+                    CultureInfo.InvariantCulture, out result);
+            }
+
+            return false;
+        }
+    }
     // Перевод служебного значения с сервера на язык интерфейса
     public class TermConverter : IValueConverter
     {
@@ -59,11 +107,7 @@ namespace PayrollClient.Converters
         {
             if (value == null) return "—";
             decimal d;
-            if (!decimal.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out d))
-            {
-                if (!decimal.TryParse(value.ToString(), out d)) return value.ToString();
-            }
-            return d.ToString("N2");
+            return NumberText.TryParse(value, out d) ? d.ToString("N2") : value.ToString();
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -79,11 +123,7 @@ namespace PayrollClient.Converters
         {
             if (value == null) return "—";
             decimal d;
-            if (!decimal.TryParse(value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out d))
-            {
-                if (!decimal.TryParse(value.ToString(), out d)) return value.ToString();
-            }
-            return d.ToString("0.##");
+            return NumberText.TryParse(value, out d) ? d.ToString("0.##") : value.ToString();
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
