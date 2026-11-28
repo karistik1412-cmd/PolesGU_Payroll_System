@@ -172,10 +172,11 @@ namespace PayrollClient.Views
                 List<ComboBoxItem> items = new List<ComboBoxItem>();
                 foreach (DataRow row in _positions.Rows)
                 {
-                    int rowCategory;
+                    // В старой базе колонки Category может не быть — тогда
+                    // должность считается подходящей для любой категории.
+                    int rowCategory = category;
                     if (_positions.Columns.Contains("Category") &&
                         !int.TryParse(row["Category"].ToString(), out rowCategory)) continue;
-                    else if (!_positions.Columns.Contains("Category")) rowCategory = category;
 
                     if (rowCategory != category) continue;
 

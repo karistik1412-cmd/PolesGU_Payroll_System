@@ -26,13 +26,20 @@ namespace PayrollClient.Services
                 button.FontWeight,
                 button.FontStretch);
 
+            // PixelsPerDip обязателен: без него FormattedText помечен как
+            // устаревший (CS0618), а на мониторах с масштабированием ширина врёт.
+            double pixelsPerDip = 1.0;
+            try { pixelsPerDip = VisualTreeHelper.GetDpi(button).PixelsPerDip; }
+            catch (Exception) { /* окно ещё не показано — берём системный DPI по умолчанию */ }
+
             FormattedText formatted = new FormattedText(
                 text,
                 System.Globalization.CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
                 typeface,
                 button.FontSize <= 0 ? 12 : button.FontSize,
-                System.Windows.Media.Brushes.Black);
+                System.Windows.Media.Brushes.Black,
+                pixelsPerDip);
 
             return Math.Max(MinWidth, Math.Ceiling(formatted.WidthIncludingTrailingWhitespace + extra));
         }
