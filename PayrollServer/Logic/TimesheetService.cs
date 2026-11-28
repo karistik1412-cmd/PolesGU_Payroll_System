@@ -235,8 +235,9 @@ namespace PayrollServer.Logic
                             string empType = reader["EmploymentType"].ToString();
                             bool isPartTime = EmployeeService.IsPartTime(empType);
 
-                            // Если запись по внутреннему совместительству — помечаем аккуратно «(совм.)»
-                            string displayName = isPartTime ? $"{rawFullName} (совм.)" : rawFullName;
+                            // Пометку «(совм.)» в ФИО не добавляем: в табеле уже есть столбец
+                            // «Статус», а клиент переводит его на выбранный язык интерфейса.
+                            string displayName = rawFullName;
 
                             bool hasRecord = reader["TimesheetID"] != DBNull.Value;
                             int normDays = (hasRecord && reader["NormDays"] != DBNull.Value && Convert.ToInt32(reader["NormDays"]) > 0)

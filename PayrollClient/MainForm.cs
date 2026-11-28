@@ -32,6 +32,8 @@ namespace PayrollClient
 
         private int _selectedMonth = DateTime.Now.Month;
         private int _selectedYear = DateTime.Now.Year >= 2020 && DateTime.Now.Year <= 2035 ? DateTime.Now.Year : 2026;
+        // Высота блока из четырёх графиков (2×2) на «Главной»
+        private const int ChartGridHeight = 620;
         private int _selectedHalfMode = 2; // 1 — 1-я половина (аванс), 2 — итог месяца (1-я + 2-я половина)
 
         private readonly string[] _months = ExcelTimesheetService.MonthNames;
@@ -323,6 +325,56 @@ namespace PayrollClient
             }
         }
 
+        // Перевод служебных значений прямо в таблице: должность, тип занятости,
+        // статус табеля, налоговые льготы. Сами данные в DataTable не меняются —
+        // переводим только то, что видит пользователь (CellFormatting).
+        private static readonly string[] TranslatedCellColumns =
+        {
+            "Должность", "Тип занятости", "Статус", "Льготы", "Этап выплаты",
+            "Категория", "Категория персонала", "Отдел", "Кафедра"
+        };
+
+        private void AttachCellTranslation(DataGridView dgv)
+        {
+            if (dgv == null) return;
+            dgv.CellFormatting -= TranslateCellValue;
+            dgv.CellFormatting += TranslateCellValue;
+        }
+
+        private void TranslateCellValue(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.Value == null || e.Value == DBNull.Value) return;
+            DataGridView dgv = sender as DataGridView;
+            if (dgv == null || e.ColumnIndex >= dgv.Columns.Count) return;
+
+            // «Кафедра» — это название подразделения: переводим только служебное слово «Кафедра»
+            if (dgv.Columns[e.ColumnIndex].Name == "Кафедра")
+            {
+                string dept = e.Value.ToString();
+                string clean = UiTheme.FormatDepartmentName(dept);
+                if (clean != dept) { e.Value = clean; e.FormattingApplied = true; }
+                return;
+            }
+
+            if (Array.IndexOf(TranslatedCellColumns, dgv.Columns[e.ColumnIndex].Name) < 0) return;
+
+            string text = e.Value.ToString();
+            string translated = Localization.Term(text);
+            if (!string.Equals(translated, text, StringComparison.Ordinal))
+            {
+                e.Value = translated;
+                e.FormattingApplied = true;
+            }
+        }
+
+        // Строка «этап выплаты» для листка — на текущем языке
+        private static string StageLabel(int halfIndex)
+        {
+            if (halfIndex == 0) return Localization.T("val.stage.half1");
+            if (halfIndex == 2) return Localization.T("val.stage.month");
+            return Localization.T("val.stage.half2");
+        }
+
         // Название месяца на текущем языке интерфейса (1..12)
         private string MonthName(int month)
         {
@@ -340,9 +392,52 @@ namespace PayrollClient
             return toolbar;
         }
 
+        // Панель инструментов бывает в одну или две строки (когда кнопки и поиск
+        // не помещаются в ряд). Здесь высота панели и положение таблицы
+        // пересчитываются согласованно, без «обрезков» и наложений.
+        private void SyncToolbarHeight(Panel toolbar, Func<bool> layout, DataGridView dgv, Panel footer)
+        {
+            if (toolbar == null) return;
+            bool twoRows = layout();
+            int targetHeight = twoRows ? 104 : 52;
+            if (toolbar.Height != targetHeight) toolbar.Height = targetHeight;
+
+            Control card = dgv != null ? dgv.Parent : null;
+            if (card == null || footer == null) return;
+
+            int top = toolbar.Bottom + 12;
+            int height = Math.Max(120, footer.Top - top - 12);
+            if (card.Top != top) card.Top = top;
+            if (card.Height != height) card.Height = height;
+        }
+
+        // Подписка на изменения размера панели с защитой от рекурсии
+        private void HookToolbarRelayout(Panel toolbar, Action relayout)
+        {
+            if (toolbar == null || relayout == null) return;
+            bool busy = false;
+            EventHandler handler = (s, e) =>
+            {
+                if (busy) return;
+                busy = true;
+                try { relayout(); }
+                finally { busy = false; }
+            };
+            toolbar.SizeChanged += handler;
+            toolbar.HandleCreated += handler;
+        }
+
         private void AddPeriodSelectors(Panel toolbar, out ComboBox cmbMonth, out NumericUpDown nudYear, bool compact = false)
         {
-            Label lblMonth = new Label
+            AddPeriodSelectors(toolbar, out cmbMonth, out nudYear, out _, out _, compact);
+        }
+
+        // Вариант, который отдаёт наружу ещё и подписи «Месяц:» / «Год:» —
+        // нужно, чтобы кнопки вставали ровно после блока выбора периода.
+        private void AddPeriodSelectors(Panel toolbar, out ComboBox cmbMonth, out NumericUpDown nudYear,
+                                        out Label lblMonth, out Label lblYear, bool compact = false)
+        {
+            lblMonth = new Label
             {
                 Text = Localization.T("common.month") + ":",
                 Location = new Point(compact ? 10 : 14, 16),
@@ -369,7 +464,7 @@ namespace PayrollClient
             toolbar.Controls.Add(cmbMonth);
 
             int yearLblX = monthX + monthW + (compact ? 8 : 12);
-            Label lblYear = new Label
+            lblYear = new Label
             {
                 Text = Localization.T("common.year") + ":",
                 Location = new Point(yearLblX, 16),
@@ -644,29 +739,49 @@ namespace PayrollClient
             }
             toolbar.Controls.Add(btnDetails);
 
-            // Кнопки выстраиваются по фактической ширине подписей — обрезки не будет
-            Action layoutEmpToolbar = () =>
+            Label lblSearchEmp = new Label { Text = Localization.T("common.search"), Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, AutoSize = true };
+            TextBox txtSearchEmp = new TextBox { Width = 210, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            toolbar.Controls.Add(lblSearchEmp);
+            toolbar.Controls.Add(txtSearchEmp);
+
+            // Кнопки — по фактической ширине подписей, поиск встаёт после последней кнопки
+            Func<bool> layoutEmpToolbar = () =>
             {
                 var visible = new List<Control>();
                 foreach (Control c in new Control[] { btnAddEmp, btnEditEmp, btnDeleteEmp, btnDetails })
                     if (c.Parent == toolbar) visible.Add(c);
-                ToolbarLayout.Arrange(toolbar, visible, 8, preferredGap: 12);
-            };
-            layoutEmpToolbar();
 
-            Label lblSearchEmp = new Label { Text = Localization.T("common.search"), Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, Location = new Point(630, 16), AutoSize = true };
-            TextBox txtSearchEmp = new TextBox { Location = new Point(682, 12), Width = 210, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
-            toolbar.Controls.Add(lblSearchEmp);
-            toolbar.Controls.Add(txtSearchEmp);
+                int rowWidth = 0;
+                ToolbarLayout.Arrange(toolbar, visible, 8, preferredGap: 12);
+                foreach (Control c in visible) rowWidth = Math.Max(rowWidth, c.Right + 18);
+
+                int searchWidth = lblSearchEmp.PreferredWidth + 6 + txtSearchEmp.Width;
+                bool twoRows = rowWidth + searchWidth > toolbar.ClientSize.Width - 10;
+                if (twoRows)
+                {
+                    // Не помещается справа — на вторую строку панели
+                    lblSearchEmp.Location = new Point(14, 62);
+                    txtSearchEmp.Location = new Point(14 + lblSearchEmp.PreferredWidth + 6, 57);
+                }
+                else
+                {
+                    lblSearchEmp.Location = new Point(rowWidth, 16);
+                    txtSearchEmp.Location = new Point(rowWidth + lblSearchEmp.PreferredWidth + 6, 12);
+                }
+                return twoRows;
+            };
+            toolbar.Height = layoutEmpToolbar() ? 104 : 52;
 
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
 
-            int gridTop = 140;
+            int gridTop = toolbar.Bottom + 12;
             int gridHeight = footer.Top - gridTop - 12;
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+
+            HookToolbarRelayout(toolbar, () => SyncToolbarHeight(toolbar, layoutEmpToolbar, dgv, footer));
             txtSearchEmp.TextChanged += (s, e) =>
             {
                 DataTable dt = dgv.DataSource as DataTable;
@@ -725,6 +840,7 @@ namespace PayrollClient
 
                         dgv.DataSource = dt;
                         ApplyColumnHeaders(dgv);
+                        AttachCellTranslation(dgv);
 
                         string[] hiddenCols = { "EmployeeID", "PositionID", "DepartmentID", "BenefitCategory", "ChildrenBenefit" };
                         foreach (string hc in hiddenCols)
@@ -893,7 +1009,7 @@ namespace PayrollClient
                 if (dgv.SelectedRows.Count == 0) { MessageBox.Show("Выберите сотрудника!"); return; }
                 DataGridViewRow sel = dgv.SelectedRows[0];
                 string fullName = sel.Cells["ФИО"].Value.ToString();
-                string position = sel.Cells["Должность"].Value.ToString();
+                string position = Localization.Term(sel.Cells["Должность"].Value.ToString());
                 string department = sel.Cells["Кафедра"].Value.ToString();
                 string hireCol = dgv.Columns["Дата приёма"] != null ? "Дата приёма" : "Дата приема";
                 DateTime hireDate = Convert.ToDateTime(sel.Cells[hireCol].Value);
@@ -934,11 +1050,11 @@ namespace PayrollClient
             NumericUpDown nudYear;
             AddPeriodSelectors(toolbar, out cmbMonth, out nudYear);
 
-            Button btnImport = UiTheme.CreatePrimaryButton(Localization.T("ts.import"), 322, 8, 155);
-            Button btnSaveManual = UiTheme.CreateOutlineButton(Localization.T("ts.saveManual"), 487, 8, 158);
-            Button btnClear = UiTheme.CreateDangerButton(Localization.T("ts.reset"), 655, 8, 108);
-            Label lblSearchTs = new Label { Text = "Поиск:", Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, Location = new Point(776, 16), AutoSize = true };
-            TextBox txtSearchTs = new TextBox { Location = new Point(828, 12), Width = 180, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
+            Button btnImport = UiTheme.CreatePrimaryButton(Localization.T("ts.import"), 0, 8, 155);
+            Button btnSaveManual = UiTheme.CreateOutlineButton(Localization.T("ts.saveManual"), 0, 8, 158);
+            Button btnClear = UiTheme.CreateDangerButton(Localization.T("ts.reset"), 0, 8, 108);
+            Label lblSearchTs = new Label { Text = Localization.T("common.search"), Font = new Font("Segoe UI", 9.5f), ForeColor = UiTheme.TextSecondary, AutoSize = true };
+            TextBox txtSearchTs = new TextBox { Width = 180, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
 
             toolbar.Controls.Add(btnImport);
             toolbar.Controls.Add(btnSaveManual);
@@ -946,14 +1062,50 @@ namespace PayrollClient
             toolbar.Controls.Add(lblSearchTs);
             toolbar.Controls.Add(txtSearchTs);
 
+            // Кнопки встают после выбора периода (раньше они были жёстко на x=322
+            // и наезжали на «Год:»), поиск идёт следом или уходит на 2-ю строку.
+            Button[] tsButtons = { btnImport, btnSaveManual, btnClear };
+            Func<bool> layoutTsToolbar = () =>
+            {
+                int width = toolbar.ClientSize.Width;
+                int rowX = ToolbarLayout.RightOf(cmbMonth, nudYear) + 26;
+                int searchWidth = lblSearchTs.PreferredWidth + 6 + txtSearchTs.Width;
+
+                int need = rowX;
+                foreach (Button b in tsButtons) need += Math.Max(b.Width, ToolbarLayout.MeasureButtonWidth(b, b.Text)) + 12;
+                need += searchWidth;
+
+                bool twoRows = need > width - 10;
+                if (twoRows)
+                {
+                    ToolbarLayout.Arrange(toolbar, tsButtons, 58, preferredGap: 12, startX: 14);
+                    int searchOnFirstRow = ToolbarLayout.RightOf(cmbMonth, nudYear) + 26;
+                    if (searchOnFirstRow + searchWidth > width - 10)
+                        searchOnFirstRow = Math.Max(14, width - 10 - searchWidth);
+                    lblSearchTs.Location = new Point(searchOnFirstRow, 17);
+                    txtSearchTs.Location = new Point(searchOnFirstRow + lblSearchTs.PreferredWidth + 6, 12);
+                }
+                else
+                {
+                    ToolbarLayout.Arrange(toolbar, tsButtons, 8, preferredGap: 12, startX: rowX);
+                    lblSearchTs.Location = new Point(btnClear.Right + 18, 16);
+                    txtSearchTs.Location = new Point(lblSearchTs.Right + 6, 12);
+                }
+                return twoRows;
+            };
+
+            toolbar.Height = layoutTsToolbar() ? 104 : 52;
+
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
 
-            int gridTop = 140;
+            int gridTop = toolbar.Bottom + 12;
             int gridHeight = footer.Top - gridTop - 12;
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: false);
+
+            HookToolbarRelayout(toolbar, () => SyncToolbarHeight(toolbar, layoutTsToolbar, dgv, footer));
             txtSearchTs.TextChanged += (s, e) =>
             {
                 if (dgv.DataSource == null || dgv.Columns["ФИО"] == null) return;
@@ -1052,6 +1204,7 @@ namespace PayrollClient
 
                     DataTable dt = JsonConvert.DeserializeObject<DataTable>(res.Data);
                     dgv.DataSource = dt;
+                    AttachCellTranslation(dgv);
 
                     // Скрываем служебные поля (Должность и Ставка в табеле не отображаются)
                     string[] hideCols = { "EmployeeID", "Category", "Rate", "RawFullName", "Должность", "Кафедра", "Ставка" };
@@ -1336,13 +1489,15 @@ namespace PayrollClient
 
             ComboBox cmbMonth;
             NumericUpDown nudYear;
-            AddPeriodSelectors(toolbar, out cmbMonth, out nudYear, compact: true);
+            Label lblMonth, lblYear;
+            AddPeriodSelectors(toolbar, out cmbMonth, out nudYear, out lblMonth, out lblYear, compact: true);
 
-            // Выбор этапа выплаты: 1-я половина (середина месяца) или итог месяца (1-я + 2-я половина)
+            // Выбор этапа выплаты: 1-я половина (середина месяца) или итог месяца (1-я + 2-я половина).
+            // Позиция по X пересчитывается в layoutPayToolbar по фактическому концу блока «Месяц/Год».
             ComboBox cmbHalf = new ComboBox
             {
                 Location = new Point(276, 12),
-                Size = new Size(202, 28),
+                Size = new Size(202, 28), // уточняется ниже по фактическому тексту вариантов
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.White,
@@ -1352,6 +1507,12 @@ namespace PayrollClient
             cmbHalf.Items.Add(Localization.T("payroll.half2"));
             cmbHalf.Items.Add(Localization.T("payroll.halfAll"));
             cmbHalf.SelectedIndex = _selectedHalfMode == 1 ? 0 : (_selectedHalfMode == 3 ? 2 : 1);
+
+            // Ширина по самому длинному варианту: в английском/белорусском тексты длиннее
+            int halfWidth = 0;
+            foreach (object item in cmbHalf.Items)
+                halfWidth = Math.Max(halfWidth, TextRenderer.MeasureText(item.ToString(), cmbHalf.Font).Width);
+            cmbHalf.Width = halfWidth + 42;
             toolbar.Controls.Add(cmbHalf);
 
             Button btnCalculate = UiTheme.CreatePrimaryButton(Localization.T("payroll.calc"), 0, 8, 92);
@@ -1378,34 +1539,63 @@ namespace PayrollClient
             TextBox txtSearchPay = new TextBox { Width = 100, Font = new Font("Segoe UI", 9.5f), BorderStyle = BorderStyle.FixedSingle };
             toolbar.Controls.Add(txtSearchPay);
 
-            // Раскладка по фактической ширине подписей: ничего не обрезается даже
-            // при длинных переводах (кнопки прижаты к правому краю панели).
-            Action layoutPayToolbar = () =>
+            // Единый ряд: [Месяц][Год][этап выплаты][кнопки…], поиск идёт следом.
+            // Раньше кнопки раскладывались от левого края панели и наезжали на выбор
+            // периода, а поле поиска уезжало под кнопку «Листок в Excel».
+            // Ширина ряда кнопок по фактическим подписям (не зависит от текущей ширины контролов)
+            Func<int, int, int> measureRow = (startX, gap) =>
             {
-                ToolbarLayout.Arrange(toolbar,
-                    new Control[] { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne },
-                    8, preferredGap: 10, rightAligned: false);
-                int searchLeft = txtSearchPay.Left;
-                if (searchLeft < btnExportOne.Right + 18)
-                    searchLeft = btnExportOne.Right + 18;
-                int maxLeft = toolbar.ClientSize.Width - txtSearchPay.Width - 10;
-                if (searchLeft > maxLeft) searchLeft = Math.Max(10, maxLeft);
-                lblSearchPay.Location = new Point(searchLeft - lblSearchPay.PreferredWidth - 6, 17);
-                txtSearchPay.Location = new Point(searchLeft, 12);
+                int w = startX;
+                foreach (Button b in new[] { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne })
+                    w += Math.Max(b.Width, ToolbarLayout.MeasureButtonWidth(b, b.Text)) + gap;
+                return w - gap;
             };
-            layoutPayToolbar();
-            toolbar.SizeChanged += (s, e) => layoutPayToolbar();
-            toolbar.HandleCreated += (s, e) => layoutPayToolbar();
+
+            Button[] payButtons = { btnCalculate, btnImportTs, btnSave, btnExport, btnExportOne };
+            Func<bool> layoutPayToolbar = () =>
+            {
+                int width = toolbar.ClientSize.Width;
+                int periodRight = ToolbarLayout.RightOf(lblMonth, cmbMonth, lblYear, nudYear);
+                cmbHalf.Location = new Point(periodRight + 14, 12);
+
+                int searchWidth = lblSearchPay.PreferredWidth + 6 + txtSearchPay.Width;
+                int inlineRight = cmbHalf.Right + 12;
+
+                // Вариант 1: всё в одну строку — [период][этап][кнопки][поиск]
+                bool fitsInOneRow = measureRow(inlineRight, 10) + 18 + searchWidth <= width - 10;
+                if (fitsInOneRow)
+                {
+                    ToolbarLayout.Arrange(toolbar, payButtons, 8, preferredGap: 10, startX: inlineRight);
+                    int searchLabelX = btnExportOne.Right + 18;
+                    lblSearchPay.Location = new Point(searchLabelX, 17);
+                    txtSearchPay.Location = new Point(searchLabelX + lblSearchPay.PreferredWidth + 6, 12);
+                    return false;
+                }
+
+                // Вариант 2: кнопки уходят на вторую строку, поиск остаётся на первой
+                ToolbarLayout.Arrange(toolbar, payButtons, 58, preferredGap: 10, startX: 14);
+                int searchOnFirstRow = cmbHalf.Right + 22;
+                if (searchOnFirstRow + searchWidth > width - 10)
+                    searchOnFirstRow = Math.Max(14, width - 10 - searchWidth);
+                lblSearchPay.Location = new Point(searchOnFirstRow, 17);
+                txtSearchPay.Location = new Point(searchOnFirstRow + lblSearchPay.PreferredWidth + 6, 12);
+                return true;
+            };
+
+            // Панель может стать двухстрочной (кнопки + поиск), тогда таблица сдвигается вниз.
+            toolbar.Height = layoutPayToolbar() ? 104 : 52;
 
             Label lblTotals;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblTotals);
             lblTotals.Text = Localization.T("payroll.periodHint", MonthName(_selectedMonth), _selectedYear);
 
-            int gridTop = 140;
+            int gridTop = toolbar.Bottom + 12;
             int gridHeight = footer.Top - gridTop - 12;
             int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2);
 
             DataGridView dgv = UiTheme.CreateStyledGrid(_contentPanel, ContentMargin, gridTop, innerWidth, gridHeight, readOnly: true);
+
+            HookToolbarRelayout(toolbar, () => SyncToolbarHeight(toolbar, layoutPayToolbar, dgv, footer));
             txtSearchPay.TextChanged += (s, e) =>
             {
                 if (dgv.DataSource == null || dgv.Columns["ФИО"] == null) return;
@@ -1465,6 +1655,7 @@ namespace PayrollClient
                 dgv.DataSource = dt;
                 if (dgv.Columns["EmployeeID"] != null) dgv.Columns["EmployeeID"].Visible = false;
                 ApplyColumnHeaders(dgv);
+                AttachCellTranslation(dgv);
 
                 foreach (DataGridViewColumn col in dgv.Columns)
                 {
@@ -2098,17 +2289,34 @@ namespace PayrollClient
             NumericUpDown nudYear;
             AddPeriodSelectors(toolbar, out cmbMonths, out nudYear);
 
-            Button btnRefresh = UiTheme.CreatePrimaryButton(Localization.T("chart.refresh"), 322, 8, 160);
-            Button btnPrint = UiTheme.CreateOutlineButton(Localization.T("chart.print"), 492, 8, 158);
+            Button btnRefresh = UiTheme.CreatePrimaryButton(Localization.T("chart.refresh"), 0, 8, 160);
+            Button btnPrint = UiTheme.CreateOutlineButton(Localization.T("chart.print"), 0, 8, 158);
             toolbar.Controls.Add(btnRefresh);
             toolbar.Controls.Add(btnPrint);
 
+            // Кнопки — сразу после блока «Месяц/Год», без наложения на него
+            Action layoutChartToolbar = () =>
+            {
+                int rowX = ToolbarLayout.RightOf(cmbMonths, nudYear) + 20;
+                ToolbarLayout.Arrange(toolbar, new Control[] { btnRefresh, btnPrint },
+                    8, preferredGap: 12, startX: rowX);
+            };
+            layoutChartToolbar();
+            HookToolbarRelayout(toolbar, layoutChartToolbar);
+
+            int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2) + 12;
+
+            // Нижняя строка итогов должна стоять ПОД графиками, а не поверх них.
+            // В обычном режиме её прижимает к низу окна CreateSummaryFooter,
+            // а на «Главной» (append) графики идут в потоке — там её ставим вручную.
             Label lblFooter;
-            Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
+            Panel footer = append
+                ? UiTheme.CreateSummaryFooterFlow(_contentPanel, ContentMargin, out lblFooter)
+                : UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
 
             int gridTop = 136;
             int gridHeight = footer.Top - gridTop - 8;
-            int innerWidth = _contentPanel.ClientSize.Width - (ContentMargin * 2) + 12;
+            if (append) gridHeight = ChartGridHeight;
 
             TableLayoutPanel chartsGrid = new TableLayoutPanel
             {
@@ -2128,8 +2336,12 @@ namespace PayrollClient
             {
                 toolbar.Top = topOffset > 0 ? topOffset : 375;
                 chartsGrid.Top = toolbar.Top + 60;
-                chartsGrid.Height = 620;
+                chartsGrid.Height = ChartGridHeight;
                 chartsGrid.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+                // Итоговая строка — сразу после сетки графиков
+                footer.Top = chartsGrid.Bottom + 10;
+                footer.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             }
             _contentPanel.Controls.Add(chartsGrid);
 
@@ -2717,10 +2929,15 @@ namespace PayrollClient
 
             Panel toolbar = CreateToolbarCard();
 
-            Button btnAdd = UiTheme.CreatePrimaryButton(Localization.T("users.add"), 12, 8, 205);
-            Button btnDelete = UiTheme.CreateDangerButton(Localization.T("users.delete"), 227, 8, 178);
+            Button btnAdd = UiTheme.CreatePrimaryButton(Localization.T("users.add"), 0, 8, 205);
+            Button btnDelete = UiTheme.CreateDangerButton(Localization.T("users.delete"), 0, 8, 178);
             toolbar.Controls.Add(btnAdd);
             toolbar.Controls.Add(btnDelete);
+
+            Action layoutUsersToolbar = () =>
+                ToolbarLayout.Arrange(toolbar, new Control[] { btnAdd, btnDelete }, 8, preferredGap: 12);
+            layoutUsersToolbar();
+            HookToolbarRelayout(toolbar, layoutUsersToolbar);
 
             Label lblFooter;
             Panel footer = UiTheme.CreateSummaryFooter(_contentPanel, ContentMargin, out lblFooter);
@@ -2746,6 +2963,7 @@ namespace PayrollClient
                                     row["Роль"] = "Экономист";
                         }
                         dgv.DataSource = dt;
+                        AttachCellTranslation(dgv);
                         if (dgv.Columns["UserID"] != null) dgv.Columns["UserID"].Visible = false;
 
                         int admins = 0;
@@ -2773,11 +2991,12 @@ namespace PayrollClient
                             }
                         }
 
-                        lblFooter.Text =
-                            $"Всего пользователей: {dt.Rows.Count}  |  " +
-                            $"Администраторов: {admins}  |  " +
-                            $"Бухгалтеров: {accountants}  |  " +
-                            $"Экономистов: {staff}";
+                        lblFooter.Text = string.Format(
+                            "{0}: {1}  |  {2}: {3}  |  {4}: {5}  |  {6}: {7}",
+                            Localization.T("users.total"), dt.Rows.Count,
+                            Localization.T("users.admins"), admins,
+                            Localization.T("users.accountants"), accountants,
+                            Localization.T("users.economists"), staff);
                     }
                     else
                     {
@@ -2944,7 +3163,9 @@ namespace PayrollClient
         private string CalculateExactExperience(DateTime startDate)
         {
             DateTime endDate = DateTime.Today;
-            if (endDate <= startDate) return "0 г. 0 мес. 0 дн.";
+            if (endDate <= startDate)
+                return string.Format("{0} {1} {2} {3} {4} {5}",
+                    "0", Localization.T("unit.years"), "0", Localization.T("unit.months"), "0", Localization.T("unit.days"));
 
             int years = endDate.Year - startDate.Year;
             int months = endDate.Month - startDate.Month;
@@ -2963,7 +3184,10 @@ namespace PayrollClient
                 months += 12;
             }
 
-            return $"{years} г. {months} мес. {days} дн.";
+            return string.Format("{0} {1} {2} {3} {4} {5}",
+                years, Localization.T("unit.years"),
+                months, Localization.T("unit.months"),
+                days, Localization.T("unit.days"));
         }
 
         private void ShowEmployeeDetails(
@@ -2977,7 +3201,7 @@ namespace PayrollClient
         {
             using (Form detailsForm = new Form())
             {
-                detailsForm.Text = "Карточка сотрудника";
+                detailsForm.Text = Localization.T("card.title");
                 detailsForm.ClientSize = new Size(470, 365);
                 detailsForm.StartPosition = FormStartPosition.CenterParent;
                 detailsForm.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -3001,11 +3225,17 @@ namespace PayrollClient
                 string expText = CalculateExactExperience(hireDate);
                 string cleanDept = UiTheme.FormatDepartmentName(department);
 
-                Label lblPos = new Label { Text = $"Должность:  {position}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 72), AutoSize = true };
-                Label lblDept = new Label { Text = $"Кафедра:  {cleanDept}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 100), AutoSize = true };
-                Label lblEmpType = new Label { Text = $"Занятость:  {employmentType} (общая ставка: {totalRate:0.##})", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 128), AutoSize = true };
-                Label lblBen = new Label { Text = $"Налоговые льготы:  {benefits}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 156), AutoSize = true };
-                Label lblHire = new Label { Text = $"Дата приёма:  {hireDate:dd.MM.yyyy}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 184), AutoSize = true };
+                // Служебные значения переводим на выбранный язык интерфейса.
+                // Term() идемпотентен: уже переведённый текст возвращается как есть.
+                string posText = Localization.Term(position);
+                string empTypeText = Localization.Term(employmentType);
+                string benefitsText = Localization.Term(benefits);
+
+                Label lblPos = new Label { Text = $"{Localization.T("card.position")}  {posText}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 72), AutoSize = true };
+                Label lblDept = new Label { Text = $"{Localization.T("card.department")}  {cleanDept}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 100), AutoSize = true };
+                Label lblEmpType = new Label { Text = $"{Localization.T("card.employment")}  {empTypeText} ({Localization.T("emp.rate").ToLowerInvariant()}: {totalRate:0.##})", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 128), AutoSize = true };
+                Label lblBen = new Label { Text = $"{Localization.T("card.benefits")}  {benefitsText}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 156), AutoSize = true };
+                Label lblHire = new Label { Text = $"{Localization.T("card.hireDate")}  {hireDate:dd.MM.yyyy}", ForeColor = UiTheme.TextPrimary, Location = new Point(24, 184), AutoSize = true };
 
                 Panel expCard = UiTheme.CreateCardPanel(leftAccent: true, topAccent: false);
                 expCard.BackColor = UiTheme.MintPale;
@@ -3014,7 +3244,7 @@ namespace PayrollClient
 
                 Label lblExpTitle = new Label
                 {
-                    Text = "Точный стаж работы в ПолесГУ",
+                    Text = Localization.T("card.experienceTitle"),
                     Location = new Point(16, 7),
                     AutoSize = true,
                     Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),

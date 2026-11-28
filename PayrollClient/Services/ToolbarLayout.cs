@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -21,11 +21,22 @@ namespace PayrollClient.Services
             return TextRenderer.MeasureText(text ?? string.Empty, like.Font).Width + (padding * 2);
         }
 
+        // Правый край блока выбора периода (месяц/год) — от него начинается ряд кнопок.
+        public static int RightOf(params Control[] controls)
+        {
+            int right = 0;
+            if (controls == null) return right;
+            foreach (Control c in controls)
+                if (c != null) right = Math.Max(right, c.Right);
+            return right;
+        }
+
         // Выравнивает кнопки в один ряд: слева направо, с одинаковым зазором.
         // rightAligned = true — прижимает ряд к правому краю (так удобнее для панели расчёта).
         public static void Arrange(Control host, IEnumerable<Control> controls, int y,
                                    int preferredGap = 14, int minGap = MinGap,
-                                   bool rightAligned = false, int edge = Edge)
+                                   bool rightAligned = false, int edge = Edge,
+                                   int startX = -1)
         {
             if (host == null) return;
 
@@ -35,7 +46,10 @@ namespace PayrollClient.Services
             if (list.Count == 0) return;
 
             int gap = preferredGap;
-            int available = host.ClientSize.Width - (edge * 2);
+            // startX >= 0 — ряд начинается не от края панели, а от указанной позиции
+            // (так кнопки встают ровно после выбора периода и не наезжают на него).
+            int leftEdge = startX >= 0 ? startX : edge;
+            int available = host.ClientSize.Width - leftEdge - edge;
             int needed = 0;
 
             foreach (Control c in list)
@@ -78,7 +92,7 @@ namespace PayrollClient.Services
                 if (!changed) break;
             }
 
-            int x = rightAligned ? Math.Max(edge, host.ClientSize.Width - edge - total) : edge;
+            int x = rightAligned ? Math.Max(leftEdge, host.ClientSize.Width - edge - total) : leftEdge;
             for (int i = 0; i < list.Count; i++)
             {
                 list[i].Location = new Point(x, y);

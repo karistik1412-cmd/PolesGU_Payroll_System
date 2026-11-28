@@ -180,6 +180,29 @@ namespace PayrollClient.Services
             return footer;
         }
 
+        // Итоговая строка в потоке страницы (под графиками), а не прижатая к низу окна.
+        // Нужна на «Главной», где графики идут друг за другом и могут уходить под прокрутку.
+        public static Panel CreateSummaryFooterFlow(Control parent, int margin, out Label lblSummary)
+        {
+            const int footerHeight = 42;
+            Panel footer = CreateCardPanel(leftAccent: true, topAccent: false);
+            footer.Location = new Point(margin, 0);
+            footer.Size = new Size(parent.ClientSize.Width - (margin * 2), footerHeight);
+            footer.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+            lblSummary = new Label
+            {
+                Text = string.Empty,
+                Location = new Point(16, 11),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                ForeColor = TextPrimary
+            };
+            footer.Controls.Add(lblSummary);
+            parent.Controls.Add(footer);
+            return footer;
+        }
+
         // Основная зелёная кнопка (главное действие)
         public static Button CreatePrimaryButton(string text, int x, int y, int width, int height = 36)
         {
