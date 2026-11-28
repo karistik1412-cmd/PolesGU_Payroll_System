@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
@@ -1641,9 +1641,20 @@ namespace PayrollClient
                                 decimal doplat = getVal("2-я пол., руб.");
                                 decimal itogo = getVal("К выплате, руб.");
                                 if (itogo == 0m) itogo = avans + doplat;
-                                decimal totalDed = avans + fszn + ndfl + prof;
+                                // Удержания и выплаты за МЕСЯЦ. Важно: аванс — это уже выплаченная
+                                // часть «чистой» суммы, поэтому в удержания он не входит.
+                                decimal totalDed = fszn + ndfl + prof;
+                                decimal netMonth = Math.Max(0m, Math.Round(gross - totalDed, 2, MidpointRounding.AwayFromZero));
+                                decimal half2Pay = doplat > 0m
+                                    ? doplat
+                                    : Math.Max(0m, Math.Round(netMonth - avans, 2, MidpointRounding.AwayFromZero));
+                                decimal paidFirstHalf = Math.Min(avans, netMonth);
 
-                                string modeTitle = cmbHalf.SelectedIndex == 0 ? "1-я половина (аванс)" : (cmbHalf.SelectedIndex == 1 ? "2-я половина (окончательно)" : "Весь месяц");
+                                int halfIdx = cmbHalf.SelectedIndex;
+                                string modeTitle = halfIdx == 0
+                                    ? "1-я половина (аванс)"
+                                    : (halfIdx == 1 ? "2-я половина (окончательный расчёт)" : "весь месяц");
+
                                 ws.Cell(1, 1).Value = $"Расчетный листок — {modeTitle}";
                                 ws.Range(1, 1, 1, 6).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                                 ws.Cell(1, 1).Style.Font.Bold = true;
@@ -1658,6 +1669,16 @@ namespace PayrollClient
                                 ws.Cell(4, 1).Value = $"Ставка: {getStr("Ставка")}   |   Дни: {getStr("Дни, дн.")}   |   Часы: {getStr("Часы, ч.")}";
                                 ws.Range(4, 1, 4, 6).Merge().Style.Font.Italic = true;
 
+                                // Пояснение: за какой именно период показаны суммы
+                                string stageNote = halfIdx == 0
+                                    ? "Выплата за 1-ю половину месяца (аванс). ФСЗН, подоходный налог и профсоюзный взнос при выплате аванса не удерживаются — они удерживаются один раз при окончательном расчёте в конце месяца."
+                                    : (halfIdx == 1
+                                        ? "Окончательный расчёт за месяц: начисления и удержания показаны за ВЕСЬ месяц, ниже — сколько уже выплачено в 1-й половине и сколько осталось доплатить во 2-й."
+                                        : "Расчёт за весь месяц: полные начисления и удержания за месяц (1-я и 2-я половины вместе).");
+                                ws.Cell(5, 1).Value = stageNote;
+                                ws.Range(5, 1, 5, 6).Merge().Style.Font.Italic = true;
+                                ws.Range(5, 1, 5, 6).Style.Alignment.WrapText = true;
+
                                 ws.Cell(6, 1).Value = "Начислено";
                                 ws.Range(6, 1, 6, 3).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                                 ws.Cell(6, 4).Value = "Удержано";
@@ -1671,39 +1692,51 @@ namespace PayrollClient
                                 ws.Range(7, 1, 7, 6).Style.Fill.BackgroundColor = XLColor.FromHtml("#EAF4EE");
                                 ws.Range(7, 1, 7, 6).Style.Font.Bold = true;
 
-                                int halfIdx = cmbHalf.SelectedIndex;
-                                var accr = halfIdx == 0
-                                    ? new[] { ("Аванс (1-я половина)", avans) }
-                                    : (halfIdx == 1
-                                        ? new[] { ("Начислено за 2-ю половину (за вычетом аванса)", Math.Max(0m, gross - avans)) }
-                                        : new[] { ("Оклад", oklad), ("Надбавка", nadb), ("Больничный / Отпуск (Б/О)", bo) });
-                                var deds = halfIdx == 0
-                                    ? new (string, decimal)[0]
-                                    : new[] { ("Пенсионный взнос (ФСЗН 1%)", fszn), ("Подоходный налог (13%)", ndfl), ("Профсоюзный взнос (1%)", prof) };
-                                int maxRows = Math.Max(accr.Length, deds.Length);
+                                var accr = new List<(string Name, decimal Sum)>();
+                                var deds = new List<(string Name, decimal Sum)>();
+
+                                if (halfIdx == 0)
+                                {
+                                    // Листок за 1-ю половину: одна строка — сумма аванса, удержаний на этом этапе нет
+                                    accr.Add(("Аванс за 1-ю половину месяца (50% плановой суммы к выплате)", avans));
+                                }
+                                else
+                                {
+                                    // Начисления и удержания за ВЕСЬ месяц — как в листке организации
+                                    accr.Add(("Оклад за месяц", oklad));
+                                    if (nadb != 0m) accr.Add(("Надбавка за месяц", nadb));
+                                    if (bo != 0m) accr.Add(("Больничный / отпускные (Б/О)", bo));
+
+                                    deds.Add(("Пенсионный взнос (ФСЗН 1%)", fszn));
+                                    deds.Add(("Подоходный налог (13%)", ndfl));
+                                    deds.Add(("Профсоюзный взнос (1%)", prof));
+                                }
+
+                                int maxRows = Math.Max(accr.Count, deds.Count);
                                 for (int i = 0; i < maxRows; i++)
                                 {
                                     int r = 8 + i;
-                                    if (i < accr.Length)
+                                    if (i < accr.Count)
                                     {
                                         ws.Cell(r, 1).Value = cmbMonth.SelectedIndex + 1;
-                                        ws.Cell(r, 2).Value = accr[i].Item1;
-                                        ws.Cell(r, 3).Value = accr[i].Item2;
+                                        ws.Cell(r, 2).Value = accr[i].Name;
+                                        ws.Cell(r, 3).Value = accr[i].Sum;
                                         ws.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
                                     }
-                                    if (i < deds.Length)
+                                    if (i < deds.Count)
                                     {
                                         ws.Cell(r, 4).Value = cmbMonth.SelectedIndex + 1;
-                                        ws.Cell(r, 5).Value = deds[i].Item1;
-                                        ws.Cell(r, 6).Value = deds[i].Item2;
+                                        ws.Cell(r, 5).Value = deds[i].Name;
+                                        ws.Cell(r, 6).Value = deds[i].Sum;
                                         ws.Cell(r, 6).Style.NumberFormat.Format = "#,##0.00";
                                     }
                                 }
 
-                                decimal dispGross = halfIdx == 0 ? avans : (halfIdx == 1 ? Math.Max(0m, gross - avans) : gross);
-                                decimal dispDed = halfIdx == 0 ? 0m : (fszn + ndfl + prof);
                                 int itogRow = 8 + maxRows;
-                                ws.Cell(itogRow, 2).Value = "Итого начислено";
+                                decimal dispGross = halfIdx == 0 ? avans : gross;
+                                decimal dispDed = halfIdx == 0 ? 0m : totalDed;
+
+                                ws.Cell(itogRow, 2).Value = halfIdx == 0 ? "Итого начислено за 1-ю половину" : "Итого начислено за месяц";
                                 ws.Cell(itogRow, 3).Value = dispGross;
                                 ws.Cell(itogRow, 3).Style.NumberFormat.Format = "#,##0.00";
                                 ws.Cell(itogRow, 5).Value = "Итого удержано";
@@ -1711,39 +1744,90 @@ namespace PayrollClient
                                 ws.Cell(itogRow, 6).Style.NumberFormat.Format = "#,##0.00";
                                 ws.Range(itogRow, 1, itogRow, 6).Style.Font.Bold = true;
 
+                                // Итоговые строки: сколько к выплате и как эта сумма делится по половинам месяца
                                 int payRow = itogRow + 1;
+                                Action<string, decimal, bool> addPayRow = (label, sum, bold) =>
+                                {
+                                    ws.Cell(payRow, 2).Value = label;
+                                    ws.Cell(payRow, 3).Value = sum;
+                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                    if (bold) ws.Range(payRow, 1, payRow, 6).Style.Font.Bold = true;
+                                    payRow++;
+                                };
+
                                 if (halfIdx == 0)
                                 {
-                                    ws.Cell(payRow, 2).Value = "К выплате (1-я половина)";
-                                    ws.Cell(payRow, 3).Value = avans;
-                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
-                                }
-                                else if (halfIdx == 1)
-                                {
-                                    ws.Cell(payRow, 2).Value = "К выплате (2-я половина)";
-                                    ws.Cell(payRow, 3).Value = doplat;
-                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                    addPayRow("К выплате (1-я половина, аванс)", avans, true);
                                 }
                                 else
                                 {
-                                    ws.Cell(payRow, 2).Value = "Итого выплат за месяц";
-                                    ws.Cell(payRow, 3).Value = itogo;
-                                    ws.Cell(payRow, 3).Style.NumberFormat.Format = "#,##0.00";
+                                    // Проверяемая цепочка: начислено − удержано = к выплате за месяц,
+                                    // и эта сумма ровно раскладывается на 1-ю и 2-ю половины.
+                                    addPayRow("К выплате за месяц (начислено − удержано)", netMonth, true);
+                                    if (paidFirstHalf > 0m)
+                                        addPayRow("в том числе 1-я половина (выплачено в середине месяца)", paidFirstHalf, false);
+                                    if (half2Pay > 0m)
+                                    {
+                                        string h2Label = halfIdx == 1
+                                            ? "К выплате за 2-ю половину (остаток к доплате)"
+                                            : "в том числе 2-я половина (к доплате в конце месяца)";
+                                        addPayRow(h2Label, half2Pay, halfIdx == 1);
+                                    }
                                 }
-                                ws.Cell(payRow, 6).Style.NumberFormat.Format = "#,##0.00";
-                                ws.Range(payRow, 1, payRow, 6).Style.Font.Bold = true;
+                                payRow--;
 
                                 ws.Range(6, 1, payRow, 6).Style.Border.InsideBorder = XLBorderStyleValues.Thin;
                                 ws.Range(6, 1, payRow, 6).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
 
                                 int taxRow = payRow + 2;
-                                ws.Cell(taxRow, 1).Value = $"Для расчета подоходного налога за {cmbMonth.Text} {y}:";
-                                ws.Range(taxRow, 1, taxRow, 4).Merge().Style.Font.Bold = true;
-                                ws.Cell(taxRow + 1, 1).Value = "Начислено для подоходного"; ws.Cell(taxRow + 1, 3).Value = gross;
-                                ws.Cell(taxRow + 2, 1).Value = "Вычеты (налоговые льготы)"; ws.Cell(taxRow + 2, 3).Value = vychet;
-                                ws.Cell(taxRow + 3, 1).Value = "Облагаемая сумма"; ws.Cell(taxRow + 3, 3).Value = Math.Max(0m, gross - vychet);
-                                ws.Cell(taxRow + 4, 1).Value = "Удержано подоходного налога"; ws.Cell(taxRow + 4, 3).Value = ndfl;
-                                ws.Range(taxRow + 1, 3, taxRow + 4, 3).Style.NumberFormat.Format = "#,##0.00";
+                                if (halfIdx == 0)
+                                {
+                                    ws.Cell(taxRow, 1).Value =
+                                        $"Подоходный налог за {cmbMonth.Text} {y} г. удерживается один раз — при окончательном расчёте (2-я половина месяца).";
+                                    ws.Range(taxRow, 1, taxRow, 6).Merge().Style.Font.Italic = true;
+                                    ws.Range(taxRow, 1, taxRow, 6).Style.Alignment.WrapText = true;
+                                }
+                                else
+                                {
+                                    // Блок для налоговой отчётности: суммы строго за ВЕСЬ месяц,
+                                    // даже если листок выгружен за 2-ю половину.
+                                    decimal taxable = Math.Max(0m, gross - vychet);
+                                    decimal taxCheck = Math.Round(taxable * 0.13m, 2, MidpointRounding.AwayFromZero);
+
+                                    ws.Cell(taxRow, 1).Value = $"Для расчета подоходного налога за {cmbMonth.Text} {y} г. (за месяц):";
+                                    ws.Range(taxRow, 1, taxRow, 4).Merge().Style.Font.Bold = true;
+
+                                    string[] taxLines =
+                                    {
+                                        "Начислено за месяц (доход для налогообложения)",
+                                        "Налоговые вычеты (льготы)",
+                                        "Облагаемая сумма",
+                                        "Удержано подоходного налога за месяц"
+                                    };
+                                    decimal[] taxSums = { gross, vychet, taxable, ndfl };
+                                    for (int i = 0; i < taxSums.Length; i++)
+                                    {
+                                        ws.Cell(taxRow + 1 + i, 1).Value = taxLines[i];
+                                        ws.Cell(taxRow + 1 + i, 3).Value = taxSums[i];
+                                    }
+                                    ws.Range(taxRow + 1, 3, taxRow + taxSums.Length, 3).Style.NumberFormat.Format = "#,##0.00";
+                                    ws.Range(taxRow + taxSums.Length, 1, taxRow + taxSums.Length, 2).Style.Font.Bold = true;
+
+                                    if (Math.Abs(taxCheck - ndfl) > 0.01m)
+                                    {
+                                        ws.Cell(taxRow + taxSums.Length + 1, 1).Value =
+                                            $"Внимание: 13% от облагаемой суммы = {taxCheck:#,##0.00} руб., а в расчёте {ndfl:#,##0.00} руб.";
+                                        ws.Range(taxRow + taxSums.Length + 1, 1, taxRow + taxSums.Length + 1, 6)
+                                          .Merge().Style.Font.Italic = true;
+                                    }
+
+                                    ws.Cell(taxRow + taxSums.Length + 2, 1).Value =
+                                        "Налог удерживается в полном объёме при окончательном расчёте: в листке за 2-ю половину он относится ко всему месяцу, а не к половине.";
+                                    ws.Range(taxRow + taxSums.Length + 2, 1, taxRow + taxSums.Length + 2, 6)
+                                      .Merge().Style.Font.Italic = true;
+                                    ws.Range(taxRow + taxSums.Length + 2, 1, taxRow + taxSums.Length + 2, 6)
+                                      .Style.Alignment.WrapText = true;
+                                }
 
                                 ws.Columns().AdjustToContents();
                                 wb.SaveAs(sfd.FileName);
