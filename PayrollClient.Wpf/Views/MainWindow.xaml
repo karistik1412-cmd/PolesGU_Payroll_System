@@ -99,34 +99,49 @@
                      ==================================================== -->
                 <Border x:Name="toolbarCard" Grid.Row="0" Style="{StaticResource CardTight}"
                         Padding="16,12" Margin="0,0,0,12">
+                    <!--
+                        Колонка 0 — подпись («Месяц:» / «Поиск:»), колонка 1 — сами поля.
+                        Кнопки стоят в колонке 1 второй строки, поэтому всегда оказываются
+                        ровно под полями периода, независимо от длины подписи и языка.
+                    -->
                     <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <!-- Строка 1: период + поиск -->
-                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <!-- Строка 1: подпись -->
+                        <TextBlock x:Name="lblMonthCaption" Grid.Row="0" Grid.Column="0"
+                                   Style="{StaticResource FieldLabel}"
+                                   Margin="0,0,8,0" VerticalAlignment="Center" />
+
+                        <!-- Строка 1: поля периода или поиска (на экране видно что-то одно) -->
+                        <Grid Grid.Row="0" Grid.Column="1">
                             <StackPanel x:Name="periodPanel" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="lblMonthCaption" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
                                 <ComboBox x:Name="cmbMonth" Style="{StaticResource AppComboBox}"
                                           Width="150" SelectionChanged="OnPeriodChanged" />
-
                                 <TextBlock x:Name="lblYearCaption" Style="{StaticResource FieldLabel}"
-                                           Margin="16,0,8,0" />
+                                           Margin="16,0,8,0" VerticalAlignment="Center" />
                                 <ComboBox x:Name="cmbYear" Style="{StaticResource AppComboBox}"
                                           Width="100" SelectionChanged="OnPeriodChanged" />
                             </StackPanel>
 
-                            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="lblSearch" Style="{StaticResource FieldLabel}" Margin="0,0,8,0" />
-                                <TextBox x:Name="txtSearch" Style="{StaticResource AppTextBox}" Width="220"
+                            <StackPanel x:Name="searchPanel" Orientation="Horizontal" VerticalAlignment="Center"
+                                        HorizontalAlignment="Left" Visibility="Collapsed">
+                                <TextBlock x:Name="lblSearch" Style="{StaticResource FieldLabel}"
+                                           Margin="0,0,8,0" VerticalAlignment="Center" />
+                                <TextBox x:Name="txtSearch" Style="{StaticResource AppTextBox}" Width="260"
                                          TextChanged="OnSearchChanged" />
                             </StackPanel>
                         </Grid>
 
-                        <!-- Строка 2: кнопки действий текущего экрана -->
-                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto"
+                        <!-- Строка 2: кнопки действий — ровно под полями -->
+                        <ScrollViewer Grid.Row="1" Grid.Column="1" Margin="0,10,0,0"
+                                      HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollBarVisibility="Disabled">
                             <StackPanel x:Name="actionBar" Orientation="Horizontal" />
                         </ScrollViewer>
