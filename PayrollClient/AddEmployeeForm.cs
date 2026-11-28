@@ -31,14 +31,14 @@ namespace PayrollClient
 
         public AddEmployeeForm()
         {
-            InitializeForm("Приём сотрудника на работу", "Сохранить");
+            InitializeForm(Localization.T("emp.addTitle"), Localization.T("common.save"));
             LoadDictionaries();
         }
 
         // Быстрое оформление внутреннего совместительства для выбранного сотрудника
         public AddEmployeeForm(string fullName, int posId, int deptId, int benefitCategory, int childrenBenefit)
         {
-            InitializeForm("Оформление внутреннего совместительства", "Сохранить");
+            InitializeForm(Localization.T("emp.partTimeTitle"), Localization.T("common.save"));
             txtFullName.Text = fullName;
             LoadDictionaries();
 
@@ -76,7 +76,7 @@ namespace PayrollClient
         {
             _editId = empId;
 
-            InitializeForm("Редактирование сотрудника", "Обновить");
+            InitializeForm(Localization.T("emp.editTitle"), Localization.T("common.save"));
             txtFullName.Text = fullName;
             LoadDictionaries();
 
@@ -156,34 +156,41 @@ namespace PayrollClient
             int w = 492;
 
             // ФИО
-            Label lblName = new Label { Text = "ФИО сотрудника", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 68), AutoSize = true };
+            Label lblName = new Label { Text = Localization.T("emp.fio"), Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 68), AutoSize = true };
             txtFullName = new TextBox { Font = new Font("Segoe UI", 10f) };
             Panel nameBox = UiTheme.WrapTextBox(txtFullName, x, 90, w, 34);
 
             // Категория персонала
-            Label lblCategory = new Label { Text = "Категория персонала", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 134), AutoSize = true };
+            Label lblCategory = new Label { Text = Localization.T("emp.category"), Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 134), AutoSize = true };
             cmbCategory = CreateComboBox(x, 156, w);
-            cmbCategory.Items.Add("Преподавательский состав");
-            cmbCategory.Items.Add("Прочий персонал (служащие)");
+            cmbCategory.Items.Add(Localization.T("val.cat.teaching"));
+            cmbCategory.Items.Add(Localization.T("val.cat.other"));
             cmbCategory.SelectedIndex = 0;
             cmbCategory.SelectedIndexChanged += CategoryChanged;
 
             // Должность
-            Label lblPos = new Label { Text = "Должность", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 194), AutoSize = true };
+            Label lblPos = new Label { Text = Localization.T("emp.position"), Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 194), AutoSize = true };
             cmbPositions = CreateComboBox(x, 216, w);
 
             // Кафедра (для прочего персонала подпись меняется на «Отдел»)
-            lblDept = new Label { Text = "Кафедра", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 254), AutoSize = true };
+            lblDept = new Label { Text = Localization.T("val.dept.department"), Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 254), AutoSize = true };
             cmbDepartments = CreateComboBox(x, 276, w);
 
             // Ставка и тип занятости (поддерживается Основное + Внутреннее совместительство на одной кафедре)
-            Label lblRate = new Label { Text = "Ставка", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 314), AutoSize = true };
+            Label lblRate = new Label { Text = Localization.T("emp.rate"), Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x, 314), AutoSize = true };
             cmbRate = CreateComboBox(x, 336, 115);
             cmbRate.Items.AddRange(new object[] { "0,25", "0,5", "0,75", "1,0" });
             cmbRate.SelectedIndex = 3;
 
-            Label lblEmp = new Label { Text = "Тип занятости", Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(x + 132, 314), AutoSize = true };
-            cmbEmployment = CreateComboBox(x + 132, 336, w - 132);
+            // Ставка и тип занятости в одну строку: ширина подписи считается по фактическому тексту,
+            // иначе длинный перевод «Тип занятости» / «Employment type» наезжает на поле ставки.
+            int empLabelX = x + Math.Max(120, TextRenderer.MeasureText(lblRate.Text, labelFont).Width + 24);
+            Label lblEmp = new Label { Text = Localization.T("emp.type"), Font = labelFont, ForeColor = UiTheme.TextSecondary, Location = new Point(empLabelX, 314), AutoSize = true };
+            cmbEmployment = CreateComboBox(empLabelX, 336, w - (empLabelX - x));
+            // В списке — перевод, в Items — служебные русские значения (их понимает сервер)
+            cmbEmployment.DrawMode = DrawMode.OwnerDrawFixed;
+            cmbEmployment.DropDownWidth = Math.Max(220, w - (empLabelX - x));
+            cmbEmployment.DrawItem += EmploymentDrawItem;
             cmbEmployment.Items.AddRange(new object[] { "Основное", "Внутреннее совместительство" });
             cmbEmployment.SelectedIndex = 0;
             cmbEmployment.SelectedIndexChanged += (s, e) =>
@@ -203,7 +210,7 @@ namespace PayrollClient
             // Налоговые льготы работника (множественный выбор по ст. 209 НК РБ)
             Label lblBenefit = new Label
             {
-                Text = "Налоговые льготы (можно выбрать несколько)",
+                Text = Localization.T("emp.taxBenefits"),
                 Font = labelFont,
                 ForeColor = UiTheme.TextSecondary,
                 Location = new Point(x, 376),
@@ -219,18 +226,18 @@ namespace PayrollClient
             };
             clbBenefits.Items.AddRange(new object[]
             {
-                "Стандартный вычет (192 руб.)",
-                "На 1 ребёнка / иждивенца (51 руб.)",
-                "На 2 и более детей (97 руб.)",
-                "Одинокий родитель / вдова (97 руб.)",
-                "Инвалид I–II гр. / ЧАЭС (272 руб.)",
-                "Молодой специалист (860 руб.)"
+                Localization.T("val.ben.standard"),
+                Localization.T("val.ben.oneChild"),
+                Localization.T("val.ben.twoChildren"),
+                Localization.T("val.ben.singleParent"),
+                Localization.T("val.ben.disabled"),
+                Localization.T("val.ben.youngSpecialist")
             });
 
             // Надбавки сотрудника (множественный выбор)
             Label lblBonuses = new Label
             {
-                Text = "Надбавки сотрудника (можно выбрать несколько)",
+                Text = Localization.T("emp.allowances"),
                 Font = labelFont,
                 ForeColor = UiTheme.TextSecondary,
                 Location = new Point(x, 486),
@@ -246,14 +253,14 @@ namespace PayrollClient
             };
             clbBonuses.Items.AddRange(new object[]
             {
-                "За работу в отрасли (50%)",
-                "За работу по контракту (45%)",
-                "За специфику в сфере образования (30%)",
-                "Молодому специалисту (30%)",
-                "Премия за текущий месяц (20%)",
-                "За высокие достижения в труде (12,5%)",
-                "За стаж работы (10%)",
-                "За кураторство (100%)"
+                Localization.T("val.bonus.industry"),
+                Localization.T("val.bonus.contract"),
+                Localization.T("val.bonus.education"),
+                Localization.T("val.bonus.youngSpec"),
+                Localization.T("val.bonus.currentMonth"),
+                Localization.T("val.bonus.achievements"),
+                Localization.T("val.bonus.experience"),
+                Localization.T("val.bonus.curatorship")
             });
 
             cmbBenefitCategory = CreateComboBox(x, 398, w);
@@ -264,7 +271,7 @@ namespace PayrollClient
             // Налоговая льгота на детей / иждивенцев
             Label lblChildren = new Label
             {
-                Text = "Льгота на детей и иждивенцев (вычет по НДФЛ)",
+                Text = Localization.T("emp.childrenBenefit"),
                 Font = labelFont,
                 ForeColor = UiTheme.TextSecondary,
                 Location = new Point(x, 436),
@@ -275,7 +282,7 @@ namespace PayrollClient
             cmbChildrenBenefit.Items.AddRange(new object[] { "0", "1", "2", "3", "4" });
             cmbChildrenBenefit.SelectedIndex = 0;
 
-            btnCancel = UiTheme.CreateOutlineButton("Отмена", this.ClientSize.Width - 262, 622, 108, 36);
+            btnCancel = UiTheme.CreateOutlineButton(Localization.T("common.cancel"), this.ClientSize.Width - 262, 622, 108, 36);
             btnCancel.DialogResult = DialogResult.Cancel;
 
             btnSave = UiTheme.CreatePrimaryButton(btnText, this.ClientSize.Width - 146, 622, 116, 36);
@@ -293,6 +300,22 @@ namespace PayrollClient
 
             this.AcceptButton = btnSave;
             this.CancelButton = btnCancel;
+        }
+
+        // В списке показываем перевод, а значение (Items[i]) остаётся служебным —
+        // иначе сервер не распознает тип занятости (для него это строка «Основное»).
+        private static void EmploymentDrawItem(object sender, DrawItemEventArgs e)
+        {
+            ComboBox cb = sender as ComboBox;
+            if (cb == null || e.Index < 0 || e.Index >= cb.Items.Count) return;
+
+            e.DrawBackground();
+            string text = Localization.Term(cb.Items[e.Index].ToString());
+            bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            Color fore = selected ? SystemColors.HighlightText : e.ForeColor;
+            TextRenderer.DrawText(e.Graphics, text, cb.Font, e.Bounds, fore,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            e.DrawFocusRectangle();
         }
 
         private static ComboBox CreateComboBox(int x, int y, int width)
@@ -332,21 +355,33 @@ namespace PayrollClient
 
                 CategoryChanged(null, null);
             }
-            catch (Exception ex) { MessageBox.Show("Ошибка загрузки справочников: " + ex.Message); }
+            catch (Exception ex) { MessageBox.Show(Localization.T("emp.dictionariesError") + ex.Message); }
         }
 
         private void CategoryChanged(object sender, EventArgs e)
         {
             int catId = cmbCategory.SelectedIndex + 1;
             if (lblDept != null)
-                lblDept.Text = catId == 1 ? "Кафедра" : "Отдел";
+                lblDept.Text = catId == 1 ? Localization.T("val.dept.department") : Localization.T("val.dept.unit");
 
             if (_allPositions == null || _allDepartments == null) return;
             if (!_allPositions.Columns.Contains("Category") || !_allDepartments.Columns.Contains("DepartmentType")) return;
 
             _allPositions.DefaultView.RowFilter = $"Category = {catId}";
+
+            // Название должности переводим в отдельном столбце, чтобы ValueMember
+            // оставался числовым PositionID, а на экране был перевод.
+            if (!_allPositions.Columns.Contains("PositionNameLocalized"))
+                _allPositions.Columns.Add("PositionNameLocalized", typeof(string));
+            foreach (DataRow r in _allPositions.Rows)
+            {
+                r["PositionNameLocalized"] = r["PositionName"] == DBNull.Value
+                    ? string.Empty
+                    : Localization.Term(r["PositionName"].ToString());
+            }
+
             cmbPositions.DataSource = _allPositions.DefaultView;
-            cmbPositions.DisplayMember = "PositionName";
+            cmbPositions.DisplayMember = "PositionNameLocalized";
             cmbPositions.ValueMember = "PositionID";
 
             int deptTypeId = (catId == 1) ? 1 : 2;
@@ -360,7 +395,7 @@ namespace PayrollClient
         {
             if (string.IsNullOrWhiteSpace(txtFullName.Text) || cmbPositions.SelectedValue == null || cmbDepartments.SelectedValue == null)
             {
-                MessageBox.Show("Заполните все обязательные поля!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(Localization.T("emp.fillRequired"), Localization.T("common.error"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -373,7 +408,10 @@ namespace PayrollClient
                 string rateStr = cmbRate.Text.Replace(',', '.');
                 decimal rate = Convert.ToDecimal(rateStr, CultureInfo.InvariantCulture);
                 string rateForServer = rate.ToString(CultureInfo.InvariantCulture);
-                string empType = cmbEmployment.Text;
+                // Берём служебное русское значение из Items, а не видимый (переведённый) текст
+                string empType = cmbEmployment.SelectedItem != null
+                    ? cmbEmployment.SelectedItem.ToString()
+                    : "Основное";
                 int benCat = 0;
                 for (int i = 0; i < clbBenefits.Items.Count; i++)
                     if (clbBenefits.GetItemChecked(i)) benCat |= (1 << i);
@@ -385,9 +423,8 @@ namespace PayrollClient
                 if (empType.IndexOf("совмест", StringComparison.OrdinalIgnoreCase) >= 0 && rate > 0.5m)
                 {
                     MessageBox.Show(
-                        "По внутреннему совместительству ставка не должна превышать 0,5 (ст. 345 ТК РБ).\n" +
-                        "Выберите ставку 0,25 или 0,5.",
-                        "Проверка ставки", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        Localization.T("emp.rateLimit"),
+                        Localization.T("emp.rateCheck"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -412,10 +449,10 @@ namespace PayrollClient
                 }
                 else
                 {
-                    MessageBox.Show(res.ErrorMessage, "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(res.ErrorMessage, Localization.T("common.attention"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
-            catch (Exception ex) { MessageBox.Show("Ошибка сети: " + ex.Message); }
+            catch (Exception ex) { MessageBox.Show(Localization.T("common.errorNetwork") + ex.Message); }
         }
     }
 }

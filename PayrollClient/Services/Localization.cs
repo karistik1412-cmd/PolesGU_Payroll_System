@@ -90,6 +90,69 @@ namespace PayrollClient.Services
             return ru; // если перевод не задан — показываем русский, но не «сырой» ключ
         }
 
+        // Перевод служебных значений, которые приходят с сервера строками
+        // (должности, тип занятости, статусы табеля, этапы выплаты, льготы).
+        // Если перевода нет — возвращаем исходный текст, чтобы никогда не показать ключ.
+        public static string Term(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value ?? string.Empty;
+            string trimmed = value.Trim();
+
+            // 0) Роли («Бухгалтер» → «Accountant» / «Бухгалтар») — они хранятся отдельно от таблиц
+            if (IsRoleName(trimmed)) return RoleText(RoleFromText(trimmed));
+
+            // 1) Прямой поиск по ключу вида "val.pos.docent"
+            string direct = Lookup(trimmed);
+            if (direct != null) return direct;
+
+            // 2) Поиск по русскому названию (ключ = русский текст в таблице Ru)
+            string byRu = ValueByRussian(trimmed);
+            if (byRu != null) return byRu;
+
+            // 3) Поиск по уже переведённому названию (например, "Lecturer") —
+            //    чтобы функция была идемпотентной при повторном вызове.
+            foreach (Dictionary<string, string> table in new[] { En, Be })
+            {
+                foreach (KeyValuePair<string, string> pair in table)
+                {
+                    if (!pair.Key.StartsWith("val.", StringComparison.Ordinal)) continue;
+                    if (string.Equals(pair.Value, trimmed, StringComparison.OrdinalIgnoreCase))
+                        return Lookup(pair.Key) ?? trimmed;
+                }
+            }
+
+            return trimmed;
+        }
+
+        // Известные названия ролей на всех трёх языках
+        private static bool IsRoleName(string text)
+        {
+            switch (text)
+            {
+                case "Администратор": case "Бухгалтер": case "Экономист": case "Сотрудник":
+                case "Administrator": case "Accountant": case "Economist": case "Employee":
+                case "Адміністратар": case "Бухгалтар": case "Эканаміст": case "Супрацоўнік":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static string ValueByRussian(string russian)
+        {
+            if (_current == AppLanguage.Russian) return null;
+            foreach (KeyValuePair<string, string> pair in Ru)
+            {
+                if (!pair.Key.StartsWith("val.", StringComparison.Ordinal)) continue;
+                if (!string.Equals(pair.Value, russian, StringComparison.OrdinalIgnoreCase)) continue;
+
+                string translated;
+                Dictionary<string, string> table = _current == AppLanguage.English ? En : Be;
+                return table.TryGetValue(pair.Key, out translated) ? translated : null;
+            }
+            return null;
+        }
+
         public static string RoleText(string role)
         {
             if (string.IsNullOrEmpty(role)) return string.Empty;
@@ -133,6 +196,77 @@ namespace PayrollClient.Services
         }
 
         private static readonly Dictionary<string, string> Ru = Make(
+            "users.total", "Всего пользователей",
+            "users.admins", "Администраторов",
+            "users.accountants", "Бухгалтеров",
+            "users.economists", "Экономистов",
+            "unit.years", "г.",
+            "unit.months", "мес.",
+            "unit.days", "дн.",
+            "val.pos.professor", "Профессор",
+            "val.pos.docent", "Доцент",
+            "val.pos.seniorLecturer", "Старший преподаватель",
+            "val.pos.lecturer", "Преподаватель",
+            "val.pos.trainee", "Преподаватель-стажёр",
+            "val.pos.head", "Заведующий кафедрой",
+            "val.pos.dean", "Декан",
+            "val.pos.specialist", "Специалист",
+            "val.pos.methodist", "Методист",
+            "val.pos.engineer", "Инженер",
+            "val.pos.labAssistant", "Лаборант",
+            "val.pos.secretary", "Секретарь",
+            "val.pos.accountant", "Бухгалтер",
+            "val.pos.bibliographer", "Библиограф",
+            "val.pos.comendant", "Комендант",
+            "val.emp.main", "Основное",
+            "val.emp.partTime", "Внутреннее совместительство",
+            "val.status.fromSheet", "Из табеля",
+            "val.status.byNorm", "По норме",
+            "val.status.manual", "Вручную",
+            "val.stage.half1", "1-я половина",
+            "val.stage.half2", "2-я половина",
+            "val.stage.month", "Весь месяц",
+            "val.ben.standard", "Стандартный вычет",
+            "val.ben.oneChild", "На 1 ребёнка",
+            "val.ben.twoChildren", "На 2 и более детей",
+            "val.ben.singleParent", "Одинокий родитель",
+            "val.ben.disabled", "Инвалид I–II гр.",
+            "val.ben.youngSpecialist", "Молодой специалист",
+            "val.bonus.industry", "За работу в отрасли",
+            "val.bonus.contract", "За работу по контракту",
+            "val.bonus.education", "За специфику в сфере образования",
+            "val.bonus.youngSpec", "Молодому специалисту",
+            "val.bonus.currentMonth", "Премия за текущий месяц",
+            "val.bonus.achievements", "За высокие достижения в труде",
+            "val.bonus.experience", "За стаж работы",
+            "val.bonus.curatorship", "За кураторство",
+            "val.benefits.none", "Нет",
+            "val.cat.teaching", "Преподавательский состав",
+            "val.cat.other", "Прочий персонал (служащие)",
+            "val.dept.department", "Кафедра",
+            "val.dept.unit", "Отдел",
+            "emp.fio", "ФИО сотрудника",
+            "emp.category", "Категория персонала",
+            "emp.position", "Должность",
+            "emp.rate", "Ставка",
+            "emp.type", "Тип занятости",
+            "emp.taxBenefits", "Налоговые льготы (можно выбрать несколько)",
+            "emp.allowances", "Надбавки сотрудника (можно выбрать несколько)",
+            "emp.childrenBenefit", "Льгота на детей и иждивенцев (вычет по НДФЛ)",
+            "emp.addTitle", "Приём сотрудника на работу",
+            "emp.partTimeTitle", "Оформление внутреннего совместительства",
+            "emp.editTitle", "Редактирование сотрудника",
+            "emp.fillRequired", "Заполните все обязательные поля!",
+            "emp.rateLimit", "По внутреннему совместительству ставка не должна превышать 0,5 (ст. 345 ТК РБ).\nВыберите ставку 0,25 или 0,5.",
+            "emp.rateCheck", "Проверка ставки",
+            "emp.dictionariesError", "Ошибка загрузки справочников: ",
+            "card.title", "Карточка сотрудника",
+            "card.position", "Должность:",
+            "card.department", "Кафедра:",
+            "card.employment", "Занятость:",
+            "card.benefits", "Налоговые льготы:",
+            "card.hireDate", "Дата приёма:",
+            "card.experienceTitle", "Точный стаж работы в ПолесГУ",
             "app.title", "ПолесГУ — Система начисления заработной платы | {0}",
             "shell.userCaption", "{0} ({1})",
             "shell.brand", "ПОЛЕСГУ",
@@ -331,6 +465,77 @@ namespace PayrollClient.Services
         );
 
         private static readonly Dictionary<string, string> En = Make(
+            "users.total", "Total users",
+            "users.admins", "Administrators",
+            "users.accountants", "Accountants",
+            "users.economists", "Economists",
+            "unit.years", "y.",
+            "unit.months", "mon.",
+            "unit.days", "d.",
+            "val.pos.professor", "Professor",
+            "val.pos.docent", "Associate professor",
+            "val.pos.seniorLecturer", "Senior lecturer",
+            "val.pos.lecturer", "Lecturer",
+            "val.pos.trainee", "Trainee lecturer",
+            "val.pos.head", "Head of department",
+            "val.pos.dean", "Dean",
+            "val.pos.specialist", "Specialist",
+            "val.pos.methodist", "Methodologist",
+            "val.pos.engineer", "Engineer",
+            "val.pos.labAssistant", "Laboratory assistant",
+            "val.pos.secretary", "Secretary",
+            "val.pos.accountant", "Accountant",
+            "val.pos.bibliographer", "Bibliographer",
+            "val.pos.comendant", "Commandant",
+            "val.emp.main", "Main employment",
+            "val.emp.partTime", "Internal part-time",
+            "val.status.fromSheet", "From timesheet",
+            "val.status.byNorm", "By norm",
+            "val.status.manual", "Manual",
+            "val.stage.half1", "1st half",
+            "val.stage.half2", "2nd half",
+            "val.stage.month", "Whole month",
+            "val.ben.standard", "Standard deduction",
+            "val.ben.oneChild", "For 1 child",
+            "val.ben.twoChildren", "For 2+ children",
+            "val.ben.singleParent", "Single parent",
+            "val.ben.disabled", "Disabled group I–II",
+            "val.ben.youngSpecialist", "Young specialist",
+            "val.bonus.industry", "For work in the industry",
+            "val.bonus.contract", "For contract work",
+            "val.bonus.education", "For education specifics",
+            "val.bonus.youngSpec", "For a young specialist",
+            "val.bonus.currentMonth", "Current month bonus",
+            "val.bonus.achievements", "For high achievements",
+            "val.bonus.experience", "For work experience",
+            "val.bonus.curatorship", "For curatorship",
+            "val.benefits.none", "None",
+            "val.cat.teaching", "Teaching staff",
+            "val.cat.other", "Other staff (employees)",
+            "val.dept.department", "Department",
+            "val.dept.unit", "Unit",
+            "emp.fio", "Employee full name",
+            "emp.category", "Staff category",
+            "emp.position", "Position",
+            "emp.rate", "Rate",
+            "emp.type", "Employment type",
+            "emp.taxBenefits", "Tax benefits (multiple choice)",
+            "emp.allowances", "Employee allowances (multiple choice)",
+            "emp.childrenBenefit", "Benefit for children and dependants",
+            "emp.addTitle", "Hiring an employee",
+            "emp.partTimeTitle", "Internal part-time employment",
+            "emp.editTitle", "Editing an employee",
+            "emp.fillRequired", "Fill in all required fields!",
+            "emp.rateLimit", "For internal part-time the rate must not exceed 0.5 (art. 345 of the Labour Code).\nChoose 0.25 or 0.5.",
+            "emp.rateCheck", "Rate check",
+            "emp.dictionariesError", "Error loading reference data: ",
+            "card.title", "Employee card",
+            "card.position", "Position:",
+            "card.department", "Department:",
+            "card.employment", "Employment:",
+            "card.benefits", "Tax benefits:",
+            "card.hireDate", "Hire date:",
+            "card.experienceTitle", "Exact length of service at PolesGU",
             "app.title", "Polessky State University — Payroll system | {0}",
             "shell.userCaption", "{0} ({1})",
             "shell.brand", "POLESGU",
@@ -529,6 +734,77 @@ namespace PayrollClient.Services
         );
 
         private static readonly Dictionary<string, string> Be = Make(
+            "users.total", "Усяго карыстальнікаў",
+            "users.admins", "Адміністратараў",
+            "users.accountants", "Бухгалтараў",
+            "users.economists", "Эканамістаў",
+            "unit.years", "г.",
+            "unit.months", "мес.",
+            "unit.days", "дз.",
+            "val.pos.professor", "Прафесар",
+            "val.pos.docent", "Дацэнт",
+            "val.pos.seniorLecturer", "Старшы выкладчык",
+            "val.pos.lecturer", "Выкладчык",
+            "val.pos.trainee", "Выкладчык-стажор",
+            "val.pos.head", "Загадчык кафедры",
+            "val.pos.dean", "Дэкан",
+            "val.pos.specialist", "Спецыяліст",
+            "val.pos.methodist", "Метадыст",
+            "val.pos.engineer", "Інжынер",
+            "val.pos.labAssistant", "Лабарант",
+            "val.pos.secretary", "Сакратар",
+            "val.pos.accountant", "Бухгалтар",
+            "val.pos.bibliographer", "Бібліёграф",
+            "val.pos.comendant", "Камендант",
+            "val.emp.main", "Асноўнае",
+            "val.emp.partTime", "Унутранае сумяшчальніцтва",
+            "val.status.fromSheet", "З табеля",
+            "val.status.byNorm", "Па норме",
+            "val.status.manual", "Уручную",
+            "val.stage.half1", "1-я палова",
+            "val.stage.half2", "2-я палова",
+            "val.stage.month", "Увесь месяц",
+            "val.ben.standard", "Стандартнае вылічэнне",
+            "val.ben.oneChild", "На 1 дзіця",
+            "val.ben.twoChildren", "На 2 і больш дзяцей",
+            "val.ben.singleParent", "Адзінокі бацька",
+            "val.ben.disabled", "Інвалід I–II гр.",
+            "val.ben.youngSpecialist", "Малады спецыяліст",
+            "val.bonus.industry", "За працу ў галіне",
+            "val.bonus.contract", "За працу па кантракце",
+            "val.bonus.education", "За спецыфіку ў адукацыі",
+            "val.bonus.youngSpec", "Маладому спецыялісту",
+            "val.bonus.currentMonth", "Прэмія за бягучы месяц",
+            "val.bonus.achievements", "За высокія дасягненні",
+            "val.bonus.experience", "За стаж працы",
+            "val.bonus.curatorship", "За куратарства",
+            "val.benefits.none", "Няма",
+            "val.cat.teaching", "Выкладчыцкі склад",
+            "val.cat.other", "Іншы персанал (служачыя)",
+            "val.dept.department", "Кафедра",
+            "val.dept.unit", "Аддзел",
+            "emp.fio", "ПІБ супрацоўніка",
+            "emp.category", "Катэгорыя персаналу",
+            "emp.position", "Пасада",
+            "emp.rate", "Стаўка",
+            "emp.type", "Тып занятасці",
+            "emp.taxBenefits", "Падатковыя льготы (можна выбраць некалькі)",
+            "emp.allowances", "Надбаўкі супрацоўніка (можна выбраць некалькі)",
+            "emp.childrenBenefit", "Льгота на дзяцей і ўтрыманцаў",
+            "emp.addTitle", "Прыём супрацоўніка на працу",
+            "emp.partTimeTitle", "Афармленне ўнутранага сумяшчальніцтва",
+            "emp.editTitle", "Рэдагаванне супрацоўніка",
+            "emp.fillRequired", "Запоўніце ўсе абавязковыя палі!",
+            "emp.rateLimit", "Па ўнутраным сумяшчальніцтве стаўка не павінна перавышаць 0,5 (арт. 345 ПК РБ).\nВыберыце стаўку 0,25 або 0,5.",
+            "emp.rateCheck", "Праверка стаўкі",
+            "emp.dictionariesError", "Памылка загрузкі даведнікаў: ",
+            "card.title", "Картка супрацоўніка",
+            "card.position", "Пасада:",
+            "card.department", "Кафедра:",
+            "card.employment", "Занятасць:",
+            "card.benefits", "Падатковыя льготы:",
+            "card.hireDate", "Дата прыёму:",
+            "card.experienceTitle", "Дакладны стаж працы ў ПалесДУ",
             "app.title", "Палескі дзяржаўны ўніверсітэт — Сістэма налічэння заробленай платы | {0}",
             "shell.userCaption", "{0} ({1})",
             "shell.brand", "ПАЛЕСГУ",
