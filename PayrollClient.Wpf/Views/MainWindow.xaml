@@ -114,7 +114,8 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <!-- Строка 1: подпись -->
+                        <!-- Строка 1: подпись — только для периода («Месяц:»).
+                             У поиска подпись своя, иначе получалось «Поиск: Поиск:». -->
                         <TextBlock x:Name="lblMonthCaption" Grid.Row="0" Grid.Column="0"
                                    Style="{StaticResource FieldLabel}"
                                    Margin="0,0,8,0" VerticalAlignment="Center" />
@@ -143,7 +144,9 @@
                         <ScrollViewer Grid.Row="1" Grid.Column="1" Margin="0,10,0,0"
                                       HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollBarVisibility="Disabled">
-                            <StackPanel x:Name="actionBar" Orientation="Horizontal" />
+                            <!-- Небольшой отступ, чтобы блок кнопок начинался под годом,
+                                 а не под полем месяца -->
+                            <StackPanel x:Name="actionBar" Orientation="Horizontal" Margin="6,0,0,0" />
                         </ScrollViewer>
                     </Grid>
                 </Border>
