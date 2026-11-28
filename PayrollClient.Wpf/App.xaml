@@ -3,18 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:conv="clr-namespace:PayrollClient.Converters"
              ShutdownMode="OnLastWindowClose">
-    <Application.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Themes/Theme.xaml" />
-            </ResourceDictionary.MergedDictionaries>
-
-            <conv:TermConverter x:Key="Term" />
-            <conv:ColumnHeaderConverter x:Key="ColumnHeader" />
-            <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
-            <conv:MoneyConverter x:Key="Money" />
-            <conv:RateConverter x:Key="Rate" />
-            <conv:EmptyToVisibilityConverter x:Key="EmptyToVisibility" />
-        </ResourceDictionary>
-    </Application.Resources>
+    <!--
+        Словарь Themes/Theme.xaml подключается в App.OnStartup, а не здесь:
+        ошибка в словаре стилей при статической загрузке завершает приложение
+        ещё до первого окна и без сообщения пользователю.
+        Конвертеры объявлены в коде (RegisterConverters) по той же причине.
+    -->
 </Application>

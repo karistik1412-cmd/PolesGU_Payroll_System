@@ -40,15 +40,15 @@
 
                 <!-- Пункты меню -->
                 <StackPanel Grid.Row="2">
-                    <RadioButton x:Name="navHome" Content="Главная" Style="{StaticResource SidebarItem}"
+                    <RadioButton x:Name="navHome" Content="Главная" GroupName="SidebarNav" Style="{StaticResource SidebarItem}"
                                  Checked="OnNavHome" />
-                    <RadioButton x:Name="navEmployees" Content="Сотрудники" Style="{StaticResource SidebarItem}"
+                    <RadioButton x:Name="navEmployees" Content="Сотрудники" GroupName="SidebarNav" Style="{StaticResource SidebarItem}"
                                  Checked="OnNavEmployees" />
-                    <RadioButton x:Name="navTimesheet" Content="Табель" Style="{StaticResource SidebarItem}"
+                    <RadioButton x:Name="navTimesheet" Content="Табель" GroupName="SidebarNav" Style="{StaticResource SidebarItem}"
                                  Checked="OnNavTimesheet" />
-                    <RadioButton x:Name="navPayroll" Content="Расчёт зарплаты" Style="{StaticResource SidebarItem}"
+                    <RadioButton x:Name="navPayroll" Content="Расчёт зарплаты" GroupName="SidebarNav" Style="{StaticResource SidebarItem}"
                                  Checked="OnNavPayroll" />
-                    <RadioButton x:Name="navUsers" Content="Пользователи" Style="{StaticResource SidebarItem}"
+                    <RadioButton x:Name="navUsers" Content="Пользователи" GroupName="SidebarNav" Style="{StaticResource SidebarItem}"
                                  Checked="OnNavUsers" />
                 </StackPanel>
 
