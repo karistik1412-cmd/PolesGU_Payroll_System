@@ -1,0 +1,62 @@
+<Window x:Class="PayrollClient.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ПолесГУ — Вход в систему"
+        Width="440" Height="540"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="{StaticResource CardBg}"
+        FontFamily="{StaticResource AppFont}"
+        UseLayoutRounding="True">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="148" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="44" />
+        </Grid.RowDefinitions>
+
+        <!-- Фирменная шапка -->
+        <Border Grid.Row="0" Background="{StaticResource SidebarBg}">
+            <Grid>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Brand}"
+                               FontSize="30" FontWeight="Bold" Foreground="White"
+                               HorizontalAlignment="Center" Margin="0,0,0,6" />
+                    <TextBlock Text="{Binding Subtitle}"
+                               FontSize="12" Foreground="{StaticResource SidebarTextMuted}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Height="4" VerticalAlignment="Bottom" Background="{StaticResource AccentGreen}" />
+            </Grid>
+        </Border>
+
+        <!-- Форма входа -->
+        <StackPanel Grid.Row="1" Margin="52,26,52,0">
+            <TextBlock Text="{Binding Caption}"
+                       FontSize="16" FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimary}"
+                       HorizontalAlignment="Center" Margin="0,0,0,22" />
+
+            <TextBlock Text="{Binding LoginLabel}" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+            <TextBox x:Name="txtLogin" Style="{StaticResource AppTextBox}" Margin="0,0,0,14" />
+
+            <TextBlock Text="{Binding PasswordLabel}" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+            <PasswordBox x:Name="txtPassword" Height="32" Padding="8,0"
+                         FontSize="12" BorderBrush="{StaticResource Border}"
+                         Background="White" VerticalContentAlignment="Center"
+                         KeyDown="OnPasswordKeyDown" Margin="0,0,0,8" />
+
+            <TextBlock x:Name="lblError" Foreground="{StaticResource DangerText}"
+                       FontSize="11" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,8" />
+
+            <Button x:Name="btnLogin" Content="{Binding SubmitLabel}"
+                    Style="{StaticResource PrimaryButton}"
+                    Height="38" Margin="0,6,0,0" Click="OnLoginClick" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" Text="{Binding Footer}"
+                   FontSize="10" Foreground="{StaticResource TextSecondary}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+</Window>

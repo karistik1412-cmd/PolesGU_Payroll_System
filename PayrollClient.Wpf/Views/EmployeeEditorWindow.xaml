@@ -1,0 +1,82 @@
+<Window x:Class="PayrollClient.Views.EmployeeEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Сотрудник" Width="620" Height="700"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource CardBg}"
+        FontFamily="{StaticResource AppFont}"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="58" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="64" />
+        </Grid.RowDefinitions>
+
+        <!-- Шапка -->
+        <Border Grid.Row="0" Background="{StaticResource SidebarBg}">
+            <TextBlock x:Name="lblHeader" FontSize="16" FontWeight="Bold" Foreground="White"
+                       VerticalAlignment="Center" Margin="22,0,0,0" />
+        </Border>
+
+        <!-- Поля -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="24,18,24,10">
+                <TextBlock x:Name="lblName" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                <TextBox x:Name="txtFullName" Style="{StaticResource AppTextBox}" Margin="0,0,0,14" />
+
+                <TextBlock x:Name="lblCategory" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                <ComboBox x:Name="cmbCategory" Style="{StaticResource AppComboBox}" Margin="0,0,0,14" />
+
+                <TextBlock x:Name="lblPosition" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                <ComboBox x:Name="cmbPositions" Style="{StaticResource AppComboBox}" Margin="0,0,0,14" />
+
+                <TextBlock x:Name="lblDepartment" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                <ComboBox x:Name="cmbDepartments" Style="{StaticResource AppComboBox}" Margin="0,0,0,14" />
+
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock x:Name="lblRate" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                        <ComboBox x:Name="cmbRate" Style="{StaticResource AppComboBox}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock x:Name="lblEmployment" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                        <ComboBox x:Name="cmbEmployment" Style="{StaticResource AppComboBox}" />
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock x:Name="lblBenefits" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,0,14">
+                    <StackPanel x:Name="benefitsPanel" />
+                </Border>
+
+                <TextBlock x:Name="lblBonuses" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="6" Padding="10,6">
+                    <StackPanel x:Name="bonusesPanel" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Кнопки -->
+        <Border Grid.Row="2" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0"
+                Background="{StaticResource CardBg}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                        VerticalAlignment="Center" Margin="0,0,20,0">
+                <Button x:Name="btnCancel" Content="Отмена" Style="{StaticResource OutlineButton}"
+                        MinWidth="110" Margin="0,0,10,0" Click="OnCancelClick" />
+                <Button x:Name="btnSave" Content="Сохранить" Style="{StaticResource PrimaryButton}"
+                        MinWidth="130" Click="OnSaveClick" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
