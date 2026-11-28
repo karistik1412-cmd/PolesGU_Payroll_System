@@ -461,8 +461,8 @@ namespace PayrollClient.Views
             Grid.SetRow(titleBlock, 0);
             inner.Children.Add(titleBlock);
 
-            chart.Height = double.NaN;
-            chart.Margin = Thickness.Empty;
+            chart.Height = double.NaN;      // растягиваем по ячейке
+            chart.Margin = new Thickness(0); // без внешних отступов
             Grid.SetRow(chart, 1);
             inner.Children.Add(chart);
 
