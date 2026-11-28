@@ -3,6 +3,7 @@ using System.Data;
 using System.Globalization;
 using System.Windows;
 using PayrollClient.Services;
+using Localization = PayrollClient.Services.Localization; // снимает конфликт с System.Windows.Localization
 
 namespace PayrollClient.Views
 {
