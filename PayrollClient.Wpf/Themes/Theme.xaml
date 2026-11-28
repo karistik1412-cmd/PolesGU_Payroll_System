@@ -297,8 +297,9 @@
     <!-- =========================================================
          Пункт бокового меню
          ========================================================= -->
+    <!-- GroupName задаётся на самих RadioButton в разметке: это обычное
+         свойство, а не DependencyProperty, и в сеттере стиля недопустимо. -->
     <Style x:Key="SidebarItem" TargetType="RadioButton">
-        <Setter Property="GroupName" Value="SidebarNav" />
         <Setter Property="Height" Value="44" />
         <Setter Property="Foreground" Value="#E6F4EB" />
         <Setter Property="FontSize" Value="12.5" />
