@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Data;
 using System.Drawing;
 using System.Globalization;
@@ -28,7 +28,6 @@ namespace PayrollClient
         private DataTable _allPositions;
         private DataTable _allDepartments;
         private readonly int? _editId = null;
-        private bool _suppressAutoRate = false;
 
         public AddEmployeeForm()
         {
@@ -39,7 +38,6 @@ namespace PayrollClient
         // Быстрое оформление внутреннего совместительства для выбранного сотрудника
         public AddEmployeeForm(string fullName, int posId, int deptId, int benefitCategory, int childrenBenefit)
         {
-            _suppressAutoRate = true;
             InitializeForm("Оформление внутреннего совместительства", "Сохранить");
             txtFullName.Text = fullName;
             LoadDictionaries();
@@ -64,7 +62,6 @@ namespace PayrollClient
             if (childrenBenefit >= 0 && childrenBenefit < cmbChildrenBenefit.Items.Count)
                 cmbChildrenBenefit.SelectedIndex = childrenBenefit;
 
-            _suppressAutoRate = false;
         }
 
         public AddEmployeeForm(
@@ -78,7 +75,6 @@ namespace PayrollClient
             int childrenBenefit = 0)
         {
             _editId = empId;
-            _suppressAutoRate = true;
 
             InitializeForm("Редактирование сотрудника", "Обновить");
             txtFullName.Text = fullName;
@@ -124,8 +120,6 @@ namespace PayrollClient
 
             for (int i = 0; i < clbBonuses.Items.Count; i++)
                 clbBonuses.SetItemChecked(i, (childrenBenefit & (1 << i)) != 0);
-
-            _suppressAutoRate = false;
         }
 
         private void InitializeForm(string title, string btnText)

@@ -77,8 +77,10 @@ namespace PayrollClient.Services
             if (key.StartsWith("role.", StringComparison.Ordinal))
                 return RoleText(key.Substring(5));
 
-            Dictionary<string, string> ru, en, be;
+            // ru — русский текст по ключу: он же запасной вариант, если в текущем языке перевода нет
+            string ru;
             if (!Ru.TryGetValue(key, out ru)) return null;
+
             Dictionary<string, string> table =
                 _current == AppLanguage.English ? En :
                 _current == AppLanguage.Belarusian ? Be : Ru;
