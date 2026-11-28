@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Threading;
 using PayrollClient.Services;
 using PayrollClient.Views;
+using Localization = PayrollClient.Services.Localization; // снимает конфликт с System.Windows.Localization
 
 namespace PayrollClient
 {

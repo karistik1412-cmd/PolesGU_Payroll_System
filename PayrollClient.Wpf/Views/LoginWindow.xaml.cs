@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using PayrollClient.Network;
 using PayrollClient.Services;
+using Localization = PayrollClient.Services.Localization; // снимает конфликт с System.Windows.Localization
 
 namespace PayrollClient.Views
 {

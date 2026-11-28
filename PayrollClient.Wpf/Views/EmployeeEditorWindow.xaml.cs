@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using Newtonsoft.Json;
 using PayrollClient.Network;
 using PayrollClient.Services;
+using Localization = PayrollClient.Services.Localization; // снимает конфликт с System.Windows.Localization
 
 namespace PayrollClient.Views
 {

@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using PayrollClient.Controls;
 using PayrollClient.Network;
 using PayrollClient.Services;
+using Localization = PayrollClient.Services.Localization; // снимает конфликт с System.Windows.Localization
 
 namespace PayrollClient.Views
 {

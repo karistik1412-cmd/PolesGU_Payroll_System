@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using PayrollClient.Services;
+using Localization = PayrollClient.Services.Localization; // снимает конфликт с System.Windows.Localization
 
 namespace PayrollClient.Converters
 {
