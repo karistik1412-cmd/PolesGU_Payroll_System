@@ -59,6 +59,17 @@ namespace PayrollClient.Services
             }
         }
 
+        private static bool _ready;
+
+        // Явная подготовка таблиц. Вызывается из App.OnStartup: если словарь
+        // окажется испорчен, ошибка попадёт в обычный try/catch, а не всплывёт
+        // как TypeInitializationException при первом обращении из разметки.
+        public static void EnsureReady()
+        {
+            if (_ready) return;
+            _ready = Ru.Count > 0; // обращение к полю запускает инициализацию таблиц
+        }
+
         // Перевод по ключу; форматирование — через string.Format при наличии аргументов
         public static string T(string key, params object[] args)
         {

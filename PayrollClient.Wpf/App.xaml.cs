@@ -26,10 +26,27 @@ namespace PayrollClient
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
 
-            Log("=== Запуск клиента ===");
+            // Сообщение до первого окна: если клиент запущен двойным щелчком,
+            // консоли нет, и без этого шага непонятно, дошло ли управление сюда.
+            Log("=== Запуск клиента === " + DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"));
+
+            // Ошибка на самых ранних шагах тоже должна быть видна: если окно
+            // не появилось, а журнала нет — подскажем, где искать причину.
+            if (!WriteStartupProbe())
+            {
+                MessageBox.Show(
+                    "Не удалось создать журнал запуска в папке:\n" + LogFile +
+                    "\n\nЗапустите клиент от имени пользователя (не из системной папки).",
+                    "Запуск клиента", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
 
             try
             {
+                // Таблицы переводов готовим заранее: иначе при повреждённом
+                // словаре ошибка всплывёт как TypeInitializationException.
+                Localization.EnsureReady();
+                Log("Словарь переводов готов");
+
                 // Тема подключается здесь, а не в App.xaml: ошибка в словаре стилей
                 // иначе убивает приложение ещё до первого окна и без сообщения.
                 LoadTheme();
@@ -51,6 +68,23 @@ namespace PayrollClient
             {
                 Log("ОШИБКА ЗАПУСКА: " + ex);
                 ShowFatal("Не удалось открыть окно входа в систему.", ex);
+            }
+        }
+
+        // Пишем пустой файл, чтобы сам факт запуска был виден даже при падении
+        // до первого Log(...). Возвращает true, если журнал доступен для записи.
+        private static bool WriteStartupProbe()
+        {
+            try
+            {
+                string folder = Path.GetDirectoryName(LogFile);
+                if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+                File.WriteAllText(LogFile, string.Empty);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 
