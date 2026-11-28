@@ -106,6 +106,7 @@ namespace PayrollClient
             Resources["BoolToVisibility"] = new Converters.BoolToVisibilityConverter();
             Resources["Money"] = new Converters.MoneyConverter();
             Resources["Rate"] = new Converters.RateConverter();
+            Resources["Number"] = new Converters.NumberConverter();
             Resources["EmptyToVisibility"] = new Converters.EmptyToVisibilityConverter();
         }
 

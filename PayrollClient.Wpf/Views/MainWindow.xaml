@@ -131,8 +131,10 @@
                                           Width="100" SelectionChanged="OnPeriodChanged" />
                             </StackPanel>
 
+                            <!-- Поиск прижат вправо: на экранах, где нужны и период,
+                                 и поиск (Табель), они не накладываются друг на друга -->
                             <StackPanel x:Name="searchPanel" Orientation="Horizontal" VerticalAlignment="Center"
-                                        HorizontalAlignment="Left" Visibility="Collapsed">
+                                        HorizontalAlignment="Right" Visibility="Collapsed">
                                 <TextBlock x:Name="lblSearch" Style="{StaticResource FieldLabel}"
                                            Margin="0,0,8,0" VerticalAlignment="Center" />
                                 <TextBox x:Name="txtSearch" Style="{StaticResource AppTextBox}" Width="260"
@@ -140,13 +142,13 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- Строка 2: кнопки действий — ровно под полями -->
+                        <!-- Строка 2: кнопки действий.
+                             Начинаются на одном уровне с полем ввода: слева стоит
+                             подпись («Поиск:» / «Месяц:»), её ширина — это Column 0. -->
                         <ScrollViewer Grid.Row="1" Grid.Column="1" Margin="0,10,0,0"
                                       HorizontalScrollBarVisibility="Auto"
                                       VerticalScrollBarVisibility="Disabled">
-                            <!-- Небольшой отступ, чтобы блок кнопок начинался под годом,
-                                 а не под полем месяца -->
-                            <StackPanel x:Name="actionBar" Orientation="Horizontal" Margin="6,0,0,0" />
+                            <StackPanel x:Name="actionBar" Orientation="Horizontal" />
                         </ScrollViewer>
                     </Grid>
                 </Border>
