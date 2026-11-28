@@ -1,0 +1,50 @@
+<Window x:Class="PayrollClient.Views.EmployeeCardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Карточка сотрудника" Width="500" Height="470"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource CardBg}"
+        FontFamily="{StaticResource AppFont}"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="62" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="64" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{StaticResource SidebarBg}">
+            <TextBlock x:Name="lblTitle" FontSize="17" FontWeight="Bold" Foreground="White"
+                       VerticalAlignment="Center" Margin="24,0,0,0"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <StackPanel Grid.Row="1" Margin="26,20,26,0">
+            <TextBlock x:Name="lblPosition" FontSize="12.5" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,10" />
+            <TextBlock x:Name="lblDepartment" FontSize="12.5" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,10" />
+            <TextBlock x:Name="lblEmployment" FontSize="12.5" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,10" />
+            <TextBlock x:Name="lblBenefits" FontSize="12.5" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,10" />
+            <TextBlock x:Name="lblHireDate" FontSize="12.5" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,16" />
+
+            <Border Style="{StaticResource Card}" Background="{StaticResource MintPale}" Padding="16,12">
+                <StackPanel>
+                    <TextBlock x:Name="lblExperienceTitle" FontSize="10.5"
+                               Foreground="{StaticResource TextSecondary}" />
+                    <TextBlock x:Name="lblExperience" FontSize="17" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryGreen}" Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <Border Grid.Row="2" BorderBrush="{StaticResource Border}" BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                        VerticalAlignment="Center" Margin="0,0,20,0">
+                <Button x:Name="btnClose" Style="{StaticResource PrimaryButton}"
+                        MinWidth="120" Click="OnCloseClick" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
